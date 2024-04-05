@@ -154,25 +154,21 @@ messages = chat_prompt.format_messages(
   occupation = task.loc[0, 'occupation']
   )
 
-# models explored based on https://python.langchain.com/docs/modules/model_io/
-if model == 'gpt-4-turbo-preview': # currently best chatgpt model
+# Models explored based on documentation from https://python.langchain.com/docs/modules/model_io/
+if model == 'gpt-4-turbo-preview': 
   chat_model = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0, max_tokens = 500)  
 elif model == 'gpt-3.5-turbo':
   chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, max_tokens = 500)
-# claude models explored
-elif model == "claude-3-opus-20240229": # currently best anthropic model
+elif model == "claude-3-opus-20240229": 
   chat_model = ChatAnthropic(model="claude-3-opus-20240229", temperature=0, max_tokens = 500)
 elif model == "claude-3-sonnet-20240229":
   chat_model = ChatAnthropic(model="claude-3-sonnet-20240229", temperature=0, max_tokens = 500)
 elif model == "claude-3-haiku-20240307":
   chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=0, max_tokens = 500)
-# cohere models explored
-elif model == "command-r-plus": # best Cohere model
+elif model == "command-r-plus":
   chat_model = ChatCohere(model="command-r-plus", temperature=0, max_tokens = 500)
-# google models explored
-elif model == "gemini-pro": # not rated limited like the 1.5 which has 50 requests per day
+elif model == "gemini-pro": 
   chat_model = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True, temperature=0, max_tokens = 500)
-# mistral models explored
 elif model == "open-mistral-7b": 
   chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0, max_tokens = 500)
 elif model == "mistral-medium-latest":
@@ -181,6 +177,7 @@ else:
     raise ValueError(f"Model {model} is not supported.")  
 
 
+# generating the response and extracting the content
 chat_response = chat_model.invoke(messages)
 chat_response_content = chat_response.content
 chat_response_id = chat_response.id
