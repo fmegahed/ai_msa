@@ -1,0 +1,7 @@
+# ignore the .env file
+.env
+
+# ignore R stuff since I use RStudio as my GUI for all code
+# and this is a Python project -- I do not want anyone to be confused
+*.Rproj
+.Rproj.user
