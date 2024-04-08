@@ -5,8 +5,6 @@ Things that will need to be changed in the file:
   - Change the `model` variable, in the models section, to the model you want to use. 
   - Remove the `head()` from the task data loading line to load all the tasks and 
     uncomment the following two lines.  
-  - Change the `task.loc[0, 'task_description']` and `task.loc[0, 'occupation']` to actual indices.
-  - Make a function to iterate over models and indices to generate chat completions.
 
 Also, note that I have now embedded the rubric in the system prompt. I was getting an error
 (when it was a dictionary like our previous approach). 
@@ -24,20 +22,21 @@ it for each example in our test cases. This means that:
 # Standard Libraries
 import os
 
-
 # External Libraries
 import pandas as pd
+import datetime as dt
 
 from dotenv import load_dotenv
+from itertools import product
 
 from langchain.prompts.chat import ChatPromptTemplate
-
 # see https://python.langchain.com/docs/modules/model_io/chat/quick_start/
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_cohere import ChatCohere
 from langchain_mistralai import ChatMistralAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+
 
 
 # ------------------------------------------------------------------------------
@@ -48,8 +47,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # - ChatGPT models are detailed in the OpenAI documentation: https://platform.openai.com/docs/models
 # - Anthropic models are documented here: https://docs.anthropic.com/claude/docs/models-overview#model-comparison
 # - Cohere model documentation can be found at: https://docs.cohere.com/
-# - Google AI Models are documented in: 
+# - Google AI Models are documented in: # https://ai.google.dev/docs
 # - Mistral AI models are documented in https://docs.mistral.ai/guides/model-selection/
+# Models explored based on documentation from https://python.langchain.com/docs/modules/model_io/
 models = [
   'gpt-4-turbo-preview', 'gpt-3.5-turbo', 
   'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307',
@@ -83,9 +83,12 @@ mistral_api_key = os.getenv('MISTRAL_API_KEY')
 
 # Task Data:
 # ----------
+
+num_tasks = 3 # for the task_statements.csv and not for the sample since it contains 1 row
+
 task = (
-  pd.read_csv('data/sample_task_statements.csv').head(1) # for testing purposes, only load the first row
-  # .sample(1000, random_state=2024) # randomly sample 1000 rows with a fixed seed corresponding to the year 2024
+  pd.read_csv('data/sample_task_statements.csv')
+  # .sample(num_tasks, random_state=2024) # randomly sample num_rows with a fixed seed corresponding to the year 2024
   # .reset_index(drop=True)
   )
 
@@ -146,8 +149,8 @@ chat_prompt = ChatPromptTemplate.from_messages([
 
 
 # ------------------------------------------------------------------------------
-# Chat Completion:
-# ----------------
+# Chat Completion Test Example:
+# -----------------------------
 
 messages = chat_prompt.format_messages(
   task_description = task.loc[0, 'task_description'], 
@@ -181,3 +184,101 @@ else:
 chat_response = chat_model.invoke(messages)
 chat_response_content = chat_response.content
 chat_response_id = chat_response.id
+
+
+# ------------------------------------------------------------------------------
+# Chat Completion Function:
+# -------------------------
+
+def generate_chat_completion(data, index, save_to_csv = True, output_file='results/ai_exposure_completions.csv'):
+  """
+  Function to generate chat completions, with the data, model and index as inputs.
+  """
+  messages = chat_prompt.format_messages(
+    occupation = data.loc[index, 'occupation'],
+    task_description = data.loc[index, 'task_description']
+    )
+  
+  # extracting the model from the data
+  model = data.loc[index, 'model']
+  
+  if model == 'gpt-4-turbo-preview': 
+    chat_model = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0, max_tokens = 500)  
+  elif model == 'gpt-3.5-turbo':
+    chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, max_tokens = 500)
+  elif model == "claude-3-opus-20240229": 
+    chat_model = ChatAnthropic(model="claude-3-opus-20240229", temperature=0, max_tokens = 500)
+  elif model == "claude-3-sonnet-20240229":
+    chat_model = ChatAnthropic(model="claude-3-sonnet-20240229", temperature=0, max_tokens = 500)
+  elif model == "claude-3-haiku-20240307":
+    chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=0, max_tokens = 500)
+  elif model == "command-r-plus":
+    chat_model = ChatCohere(model="command-r-plus", temperature=0, max_tokens = 500)
+  elif model == "gemini-pro": 
+    chat_model = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True, temperature=0, max_tokens = 500)
+  elif model == "open-mistral-7b": 
+    chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0, max_tokens = 500)
+  elif model == "mistral-medium-latest":
+    chat_model = ChatMistralAI(model="mistral-medium-latest", temperature=0, max_tokens = 500)
+  else:
+      raise ValueError(f"Model {model} is not supported.")  
+
+  # generating the response and extracting the content
+  chat_response = chat_model.invoke(messages)
+  chat_response_content = chat_response.content
+  chat_response_id = chat_response.id
+  
+  data_row = pd.DataFrame({
+    'date': [dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+    'model': [model],
+    'occupation': [data.loc[index, 'occupation']],
+    'task_id': [data.loc[index, 'Task ID']],
+    'task_description': [data.loc[index, 'task_description']],
+    'chat_response': [chat_response_content], 
+    'chat_response_id': [chat_response_id]
+    })
+  
+  # check if we do not want to save to csv
+  if not save_to_csv:
+    return chat_response_content
+  # if we want to save to csv and the file does not exist
+  elif not os.path.exists(output_file):
+    df = data_row
+    df.to_csv(output_file, index=False)
+  # otherwise, we append to the existing file
+  else:
+    df = pd.read_csv(output_file)
+    df = pd.concat([df, data_row], ignore_index=True)
+    df.to_csv(output_file, index=False)
+  return chat_response_content
+
+
+
+# ------------------------------------------------------------------------------
+# Tests for the function:
+# -----------------------
+sample_models = [models[1], models[7]]
+replicates = 2
+
+# Combinations of models and replicates
+combinations = list(product(sample_models, range(1, replicates + 1)))
+
+# Creating the data with replicates, while adding the model and replicate columns
+# and shuffling the data
+data = pd.concat([task] * len(combinations), ignore_index=True)
+data['model'] = [comb[0] for comb in combinations]
+data['replicate'] = [comb[1] for comb in combinations]
+data = data.sample(frac=1, random_state=2024).reset_index(drop=True)
+
+# Creating a new column replicated that will be used to keep track of the actual 
+# order of replicates and removing the replicate column
+data['replicated'] = data.groupby(['model', 'Task ID']).cumcount() + 1
+data.drop(columns = 'replicate', inplace=True)
+
+# Running the function for each row in the data
+for index in range(data.shape[0]):
+  generate_chat_completion(data, index, save_to_csv = True, output_file='results/ai_exposure_completions.csv')
+
+
+
+# ------------------------------------------------------------------------------
