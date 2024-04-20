@@ -36,6 +36,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_cohere import ChatCohere
 from langchain_mistralai import ChatMistralAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 
 
 
@@ -55,10 +56,12 @@ models = [
   'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307',
   'command-r-plus',
   'gemini-pro',
-  'open-mistral-7b', 'mistral-medium-latest'
+  'open-mistral-7b', 'mistral-medium-latest',
+  'llama3-8b-8192', 'llama3-70b-8192',
+  'gemma-7b-it'
   ]
 
-model = models[6] # change this to the model you want to use
+model = models[10] # change this to the model you want to use
 
 
 
@@ -73,6 +76,7 @@ anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
 cohere_api_key = os.getenv('COHERE_API_KEY')
 google_api_key = os.getenv('GOOGLE_API_KEY')
 mistral_api_key = os.getenv('MISTRAL_API_KEY')
+groq_api_key = os.getenv('GROQ_API_KEY')
 
 
 
@@ -149,50 +153,14 @@ chat_prompt = ChatPromptTemplate.from_messages([
 
 
 # ------------------------------------------------------------------------------
-# Chat Completion Test Example:
-# -----------------------------
-
-messages = chat_prompt.format_messages(
-  task_description = task.loc[0, 'task_description'], 
-  occupation = task.loc[0, 'occupation']
-  )
-
-# Models explored based on documentation from https://python.langchain.com/docs/modules/model_io/
-if model == 'gpt-4-turbo-preview': 
-  chat_model = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0, max_tokens = 500)  
-elif model == 'gpt-3.5-turbo':
-  chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, max_tokens = 500)
-elif model == "claude-3-opus-20240229": 
-  chat_model = ChatAnthropic(model="claude-3-opus-20240229", temperature=0, max_tokens = 500)
-elif model == "claude-3-sonnet-20240229":
-  chat_model = ChatAnthropic(model="claude-3-sonnet-20240229", temperature=0, max_tokens = 500)
-elif model == "claude-3-haiku-20240307":
-  chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=0, max_tokens = 500)
-elif model == "command-r-plus":
-  chat_model = ChatCohere(model="command-r-plus", temperature=0, max_tokens = 500)
-elif model == "gemini-pro": 
-  chat_model = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True, temperature=0, max_tokens = 500)
-elif model == "open-mistral-7b": 
-  chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0, max_tokens = 500)
-elif model == "mistral-medium-latest":
-  chat_model = ChatMistralAI(model="mistral-medium-latest", temperature=0, max_tokens = 500)
-else:
-    raise ValueError(f"Model {model} is not supported.")  
-
-
-# generating the response and extracting the content
-chat_response = chat_model.invoke(messages)
-chat_response_content = chat_response.content
-chat_response_id = chat_response.id
-
-
-# ------------------------------------------------------------------------------
 # Chat Completion Function:
 # -------------------------
 
-def generate_chat_completion(data, index, save_to_csv = True, output_file='results/ai_exposure_completions.csv'):
+def generate_chat_completion(data, index, temp=0, max_num_tokens = 500, save_to_csv = True, output_file='results/ai_exposure_completions.csv'):
   """
   Function to generate chat completions, with the data, model and index as inputs.
+  We also have the option to save the output to a csv file, and include the output file name as an input.
+  We provide reasonable defaults for traditional chat completions parameters.
   """
   messages = chat_prompt.format_messages(
     occupation = data.loc[index, 'occupation'],
@@ -203,23 +171,29 @@ def generate_chat_completion(data, index, save_to_csv = True, output_file='resul
   model = data.loc[index, 'model']
   
   if model == 'gpt-4-turbo-preview': 
-    chat_model = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0, max_tokens = 500)  
+    chat_model = ChatOpenAI(model="gpt-4-turbo-preview", temperature=temp, max_tokens=max_num_tokens)  
   elif model == 'gpt-3.5-turbo':
-    chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, max_tokens = 500)
+    chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=temp, max_tokens=max_num_tokens)
   elif model == "claude-3-opus-20240229": 
-    chat_model = ChatAnthropic(model="claude-3-opus-20240229", temperature=0, max_tokens = 500)
+    chat_model = ChatAnthropic(model="claude-3-opus-20240229", temperature=temp, max_tokens=max_num_tokens)
   elif model == "claude-3-sonnet-20240229":
-    chat_model = ChatAnthropic(model="claude-3-sonnet-20240229", temperature=0, max_tokens = 500)
+    chat_model = ChatAnthropic(model="claude-3-sonnet-20240229", temperature=temp, max_tokens=max_num_tokens)
   elif model == "claude-3-haiku-20240307":
-    chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=0, max_tokens = 500)
+    chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=temp, max_tokens=max_num_tokens)
   elif model == "command-r-plus":
-    chat_model = ChatCohere(model="command-r-plus", temperature=0, max_tokens = 500)
+    chat_model = ChatCohere(model="command-r-plus", temperature=temp, max_tokens=max_num_tokens)
   elif model == "gemini-pro": 
-    chat_model = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True, temperature=0, max_tokens = 500)
+    chat_model = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True, temperature=temp, max_tokens=max_num_tokens)
   elif model == "open-mistral-7b": 
-    chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0, max_tokens = 500)
+    chat_model = ChatMistralAI(model="open-mistral-7b", temperature=temp, max_tokens=max_num_tokens)
   elif model == "mistral-medium-latest":
-    chat_model = ChatMistralAI(model="mistral-medium-latest", temperature=0, max_tokens = 500)
+    chat_model = ChatMistralAI(model="mistral-medium-latest", temperature=temp, max_tokens=max_num_tokens)
+  elif model == "llama3-8b-8192":
+    chat_model = ChatGroq(model="llama3-8b-8192", temperature=temp, max_tokens=max_num_tokens)
+  elif model == "llama3-70b-8192":
+    chat_model = ChatGroq(model="llama3-70b-8192", temperature=temp, max_tokens=max_num_tokens)
+  elif model == "gemma-7b-it":
+    chat_model = ChatGroq(model="gemma-7b-it", temperature=temp, max_tokens=max_num_tokens)
   else:
       raise ValueError(f"Model {model} is not supported.")  
 
@@ -257,7 +231,7 @@ def generate_chat_completion(data, index, save_to_csv = True, output_file='resul
 # ------------------------------------------------------------------------------
 # Tests for the function:
 # -----------------------
-sample_models = [models[1], models[7]]
+sample_models = [models[11]]
 replicates = 2
 
 # Combinations of models and replicates
