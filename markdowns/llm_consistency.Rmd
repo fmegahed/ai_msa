@@ -31,6 +31,21 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Preface {-}
+
+In this project, we utilize the open-source `r fontawesome::fa(name = "r-project", fill = "steelblue")` programming language, alongside Python, to evaluate the consistency of large language models (LLMs) through intra- and inter-reliability methods. For R, we are using *version 4.4.1 (2024-06-14 ucrt)*, and we manage package dependencies with `renv`. The `renv` package allows for isolated project environments, ensuring the same versions of R packages are used consistently. If you're new to `renv`, it enables the creation of "snapshots" for package versions, ensuring reproducibility across different systems. You can find all package versions used in this project in our `renv` repository at [this link](https://github.com/fmegahed/ai_msa/tree/main/renv).
+
+This document is structured using RMarkdown, which seamlessly integrates both R and Python code chunks. Readers can tell the difference between R and Python code chunks by downloading the raw RMarkdown file from [this repository](https://github.com/fmegahed/ai_msa/tree/main/markdowns). In addition, the document features a **floating table of contents (TOC)** on the side, which makes navigation through the sections more convenient. The TOC follows the reader as they scroll, allowing quick access to different sections.
+
+We’ve also implemented **foldable code chunks**, enabling the user to expand and collapse code as needed to focus on the explanations or results. This feature improves the document’s readability by allowing you to hide the code while reading the main content. If you would like to view or modify the raw code, click the "Code" button at the top of the document to download the full RMarkdown file. This gives you access to all the code chunks used in the analysis.
+
+For the Python sections, we are using a conda environment with *Python version 3.12.5*. The required Python packages can be installed via the `requirements.txt` file, available [here](https://github.com/fmegahed/ai_msa/blob/main/requirements.txt). The RMarkdown document links to the conda environment, allowing Python chunks to execute alongside the R code in the same workflow.
+
+To securely store API secrets for the large language models (LLMs) accessed in the Python chunks, we use a `.env` file that holds these keys in a safe, environment-specific manner. Similarly, for the stock news API accessed in the R sections, we save the API secret in a project-based `.Renviron` file. Both files keep sensitive credentials secure and allow us to avoid hardcoding API secrets directly in the code. For obvious security reasons, we did not push these `.env` and `.Renviron` files to our GitHub repository.
+
+All input and output files for this project can be accessed and downloaded from our [GitHub repository](https://github.com/fmegahed/ai_msa).
+
+
 # Objectives of this Analysis
 
 - We present minimum sample size calculations for the binary and multiclass classification experiments.  
@@ -341,7 +356,7 @@ all_but_last = paste(column_names[-length(column_names)], collapse = ", ")
 final_string = stringr::str_c(all_but_last, ", and ", column_names[length(column_names)])
 ```
 
-The `stock_news_df` data frame contains `r scales::comma(nrow(stock_news_df))` rows and `r ncol(stock_news_df)` columns. The names of the columns are: `r final_string`. Furthermore, the sentiment of the articles is stored in the `sentiment` column. The sentiment of those articles is divided into two categories: `positive`, and `negative`. Their distribution is as follows:
+The CSV file containing the stock news data can be accessed [here](https://github.com/fmegahed/ai_msa/blob/main/data/stock_news_data.csv). The `stock_news_df` data frame contains `r scales::comma(nrow(stock_news_df))` rows and `r ncol(stock_news_df)` columns. The names of the columns are: `r final_string`. Furthermore, the sentiment of the articles is stored in the `sentiment` column. The sentiment of those articles is divided into two categories: `positive`, and `negative`. Their distribution is as follows:
 
 ```{r sentiment_table, echo=FALSE, results='asis'}
 pander::pander(table(stock_news_df$sentiment), compact = TRUE)
@@ -367,7 +382,7 @@ readr::write_rds(binary_data, "../data/binary_classification_data.rds")
 readr::write_csv(binary_data, "../data/binary_classification_data.csv")
 ```
 
-The resulting binary classification dataset contains `r scales::comma(nrow(binary_data))` samples. The distribution of the sentiment classes is as follows: 
+The resulting [binary classification dataset](https://github.com/fmegahed/ai_msa/blob/main/data/binary_classification_data.csv) contains `r scales::comma(nrow(binary_data))` samples. The distribution of the sentiment classes is as follows: 
 
 ```{r sentiment_table2, echo=FALSE, results='asis'}
 pander::pander(table(binary_data$sentiment), compact = TRUE)
@@ -478,5 +493,58 @@ res = generalized_chat_completion(
   num_replicates = 5,
   output_file = '../results/binary_classification_results.csv',
   )
+```
+
+The labeling process has been completed for the binary classification dataset. The results have been saved to a CSV file, which can be accessed [here](https://github.com/fmegahed/ai_msa/blob/main/results/binary_classification_results.csv).
+
+
+### Extracting the LLM Labels and Creating a Dataframe for Analysis
+
+In this section, we will extract the LLM labels from the binary classification results and create a dataframe for further analysis. We will extract the LLM labels from the chat responses and create a new column in the dataframe for each LLM model. We will also calculate the frequency of the most common label across replicates to assess the consistency of the LLMs.
+
+```{r binary_classification_labels, results='hide'}
+# read the binary classification results from the CSV file
+binary_classification_results = readr::read_csv("../results/binary_classification_results.csv")
+
+# function to calculate the most frequent value (Mode) and its frequency
+mode_frequency = function(x) {
+  freq_table = table(x)
+  return(max(freq_table) / length(x))
+}
+
+# create a dataframe for analysis
+binary_analysis_df = 
+  binary_classification_results |>
+  dplyr::mutate(
+    # extract the LLM labels, handling both patterns with an optional colon
+    llm_label = stringr::str_extract(
+      chat_response, 
+      "(?i)(<classification>:?\\s?\\w+|classification:?\\s?\\w+)"
+    ),
+    # remove the "classification" part
+    llm_label = stringr::str_replace(
+      llm_label, "(?i)(<*classification>:?\\s?|classification: )", ""
+      ),
+    # convert the LLM labels to lowercase for consistency
+    llm_label = stringr::str_to_lower(llm_label)
+  ) |>
+  # select relevant columns
+  dplyr::select(date, title, text, tickers, chat_model, chat_replicate, llm_label) |> 
+  # pivot the data to wide format for easier comparison (and append the replicate number in name)
+  tidyr::pivot_wider(names_from = chat_replicate, values_from = llm_label, names_prefix = "rep_") |> 
+  # compute the frequency of the most frequent value across replicates
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    percent_agreement = mode_frequency(
+      dplyr::c_across(tidyselect::starts_with("rep_"))
+      ) * 100,
+    # we will need to add the other metrics here and check that our logic is correct
+  ) |>
+  dplyr::ungroup() # ungroup after rowwise operation
+
+# save the analysis dataframe as RDS and CSV files
+readr::write_rds(binary_analysis_df, "../results/binary_analysis_df.rds")
+readr::write_csv(binary_analysis_df, "../results/binary_analysis_df.csv")
+
 ```
 
