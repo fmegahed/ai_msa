@@ -5,12 +5,16 @@ author:
     affiliation: Farmer School of Business, Miami University
   - name: "Ying-Ju (Tessa) Chen ^[Email: ychen4@udayton.edu | Phone: +1-937-229-2405 | Website: <a href=\"https://udayton.edu/directory/artssciences/mathematics/chen-ying-ju.php\">University of Dayton Official</a>]"
     affiliation: Department of Mathematics, University of Dayton
+  - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Sven Knoth ^[Email: knoth@hsu-hh.de | Phone: +49-40-6541-3400| Website: <a href=\"https://www.hsu-hh.de/compstat/en/sven-knoth-2\">Helmut-Schmidt-Universität Official</a>]"
+    affiliation: Helmut-Schmidt-Universität
   - name: "Katie Ross^[Email: rossks@miamioh.edu | Phone: +1-513-529-4826 | Website: <a href=\"https://miamioh.edu/fsb/departments/information-systems-analytics/index.html\">Miami University Official</a>]"
     affiliation: Farmer School of Business, Miami University
   - name: "Brooke Wang ^[Email: wangj249@miamioh.edu | Phone: +1-513-529-1577 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/wangj249\">Miami University Official</a>]"
     affiliation: Farmer School of Business, Miami University
-  - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a>]"
-    affiliation: Farmer School of Business, Miami University
+  - name: "Inez M. Zwetsloot ^[Email: i.m.zwetsloot@uva.nl | Website: <a href=\"https://www.uva.nl/en/profile/z/w/i.m.zwetsloot/i.m.zwetsloot.html?cb\">University of Amsterdam Official</a>]"
+    affiliation: Faculty of Economics and Business, University of Amsterdam
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output: 
   html_document:
