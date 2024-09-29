@@ -5,3 +5,8 @@
 # and this is a Python project -- I do not want anyone to be confused
 *.Rproj
 .Rproj.user
+.Renviron
+.Rprofile
+
+# cached files
+markdowns/llm_consistency_cache/

@@ -1,0 +1,478 @@
+---
+title: "Evaluating the Consistency of Multiple LLMs with Intra and Inter Reliability Methods"
+author:
+  - name: "Fadel M. Megahed ^[Email: fmegahed@miamioh.edu | Phone: +1-513-529-4185 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/megahefm\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Ying-Ju (Tessa) Chen ^[Email: ychen4@udayton.edu | Phone: +1-937-229-2405 | Website: <a href=\"https://udayton.edu/directory/artssciences/mathematics/chen-ying-ju.php\">University of Dayton Official</a>]"
+    affiliation: Department of Mathematics, University of Dayton
+  - name: "Katie Ross^[Email: rossks@miamioh.edu | Phone: +1-513-529-4826 | Website: <a href=\"https://miamioh.edu/fsb/departments/information-systems-analytics/index.html\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Brooke Wang ^[Email: wangj249@miamioh.edu | Phone: +1-513-529-1577 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/wangj249\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+  - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    number_sections: TRUE
+    code_folding: show
+    code_download: TRUE
+    theme: simplex
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objectives of this Analysis
+
+- We present minimum sample size calculations for the binary and multiclass classification experiments.  
+- We describe the experimental setup for the consistency analysis of multiple LLMs.  
+- We provide a custom function for LLM classification experiments.  
+- We present an example of a binary classification experiment, using the LLMs to label the sentiment of news articles related to the stock market, and utilize the intra- and inter-rater reliability methods to evaluate the consistency of the LLMs.
+- We present an example of a multiclass classification experiment, using the LLMs to label the impact of AI on jobs and tasks, and utilize the intra- and inter-rater reliability methods to evaluate the consistency of the LLMs.
+
+
+
+# Sample Size Calculations for the Different Experiments
+
+The minimum sample size for each of our experiments was computed for: **simple percent agreement**, **Gwet's AC1 coefficient**, and **Brennan-Prediger coefficient**. The minimum sample size was computed using the tables in [Handbook of Inter-Rater Reliability, 5th Edition. Volume 1: Analysis of Categorical Ratings](https://sites.fastspring.com/agreestat/instant/cac5ed978_1_7923_5463_2e). The sample sizes were computed for the three different metrics, with a margin of error of 0.05, a confidence level of 0.90, and for five replicates.
+
+
+## Minimum Sample Size for the Binary Classification Experiment
+
+```{r binary_classification_sample_size, echo=FALSE, results='asis'}
+# create a data frame of the obtained sample size results
+binary_data = data.frame(
+  metric = c("Percent Agreement", "Gwet’s AC1 Coefficient", "Brennan-Prediger Coefficient"),
+  `sample size` = c(216, 1317, 847) |> scales::comma()
+)
+
+# generate the table in HTML format
+knitr::kable(
+  binary_data, format = "html", table.attr = "style='width:50%;'", 
+  align = c('l','r')
+  ) |>
+  kableExtra::kable_styling(full_width = FALSE) |>
+  kableExtra::column_spec(1, bold = TRUE)
+```
+
+Therefore, using the highest sample size among the three metrics, we need at **least 1,317 samples** for the binary classification experiment.
+
+
+## Minimum Sample Size for the Multiclass Classification Experiment
+
+To estimate the sample size needed by [Eisfeldt et al. 2023](https://www.nber.org/system/files/working_papers/w31222/w31222.pdf) in their 4-class classification experiment, we used a similar approach to the binary classification experiment. The minimum sample size was computed for the three different metrics, with a margin of error of 0.05, a confidence level of 0.90, and for five replicates.
+
+```{r multiclass_classification_sample_size, echo=FALSE, results='asis'}
+# create a data frame of the obtained sample size results
+multiclass_data = data.frame(
+  metric = c("Percent Agreement", "Gwet’s AC1 Coefficient", "Brennan-Prediger Coefficient"),
+  `sample size` = c(474, 988, 912) |> scales::comma()
+)
+
+# generate the table in HTML format
+knitr::kable(
+  multiclass_data, format = "html", table.attr = "style='width:50%;'",
+  align = c('l','r')
+  ) |>
+  kableExtra::kable_styling(full_width = FALSE) |>
+  kableExtra::column_spec(1, bold = TRUE)
+```
+
+Therefore, using the highest sample size among the three metrics, we need at **least 988 samples** for the multiclass classification experiment.
+
+
+# Experimental Setup for the Consistency Analysis
+
+
+## LLMs Used and their API Keys
+
+In our experiments, we selected the following LLMs:
+
+- `claude-3-5-sonnet-20240620`, which is [Anthropic's current best model](https://www.anthropic.com/news/claude-3-5-sonnet) as of Sept 24, 2024;
+- `command-r-plus`, which is [Cohere's latest model](https://docs.cohere.com/docs/command-r-plus) as of Sept 24, 2024;
+- `mistral-small-2409`, which is the latest small model from [Mistral](https://www.mistral.ai/) as of Sept 24, 2024, 
+- `gpt-4o-2024-08-06`, which is [OpenAI's flagship, stable, model](https://platform.openai.com/docs/models/gpt-4o) as of Sept 24, 2024; 
+-`claude-3-haiku-20240307`, which represents the smallest model provided by [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models#model-names) as of Sept 24, 2024;
+- `mistral-large-2407`, which is the latest large model from [Mistral](https://www.mistral.ai/) as of Sept 24, 2024; and 
+- `gpt-4o-mini`, which is [OpenAI's latest stable and mini model](https://platform.openai.com/docs/models/gpt-4o-mini). 
+
+
+```{python models}
+# load the necessary libraries
+from dotenv import load_dotenv
+from langchain.prompts.chat import ChatPromptTemplate
+
+# load the environment variables
+load_dotenv()
+
+# the API keys for the different LLMs
+openai_api_key = os.getenv('OPENAI_API_KEY')
+anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+cohere_api_key = os.getenv('COHERE_API_KEY')
+groq_api_key = os.getenv('GROQ_API_KEY')
+mistral_api_key = os.getenv('MISTRAL_API_KEY')
+
+# the LLM models to be used for labeling
+models = [
+  'claude-3-5-sonnet-20240620',
+  'command-r-plus',
+  'mistral-small-2409',
+  'gpt-4o-2024-08-06',
+  'claude-3-haiku-20240307',
+  'mistral-large-2407',
+  'gpt-4o-mini'
+]
+```
+
+
+
+## A Custom Function for LLM Classification Experiments
+
+We created a custom function, `generalized_chat_completion`, to facilitate the interaction with the LLMs and generate chat completions for each news article in the dataset. The function takes the following parameters: 
+
+- `csv_path`: the path to the CSV file containing the news articles;
+- `columns_to_keep`: the columns to retain in the final CSV output;
+- `models`: a list of chat models to be used;
+- `chat_prompt_template`: the prompt template for generating chat messages;
+- `columns_for_chat_prompt`: the columns to be used as the user input in the chat prompt template;
+- `num_replicates`: the number of replicates per model;
+- `temp`: the temperature for the chat model;
+- `max_num_tokens`: the maximum number of tokens for chat completions;
+- `save_to_csv`: whether to save results to CSV;
+- `output_file`: the path to the output CSV file; and 
+- `retry_attempts`: the number of retry attempts for API errors.
+
+The function reads the CSV file, replicates the data based on the number of models and replicates, sorts the data frame, and iterates through each row to generate chat completions. It uses the specified chat model to generate chat responses, with error handling for API errors. The function saves the results to a CSV file if required and returns the last chat response content if `save_to_csv` is `False`.
+
+```{python custom_fun}
+import pandas as pd
+import datetime as dt
+import os
+import time
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
+from langchain_mistralai import ChatMistralAI
+from langchain_groq import ChatGroq
+
+def generalized_chat_completion(
+    csv_path,
+    columns_to_keep,
+    models,
+    chat_prompt_template,
+    columns_for_chat_prompt,
+    num_replicates,
+    temp=0,
+    max_num_tokens=3000,
+    save_to_csv=True,
+    output_file='../results/generalized_classification.csv',
+    retry_attempts=3
+):
+    """
+    Generalized function to generate chat completions from a CSV file, with flexible parameters
+    for various chat models, sorting order, and error handling.
+    
+    Parameters:
+        csv_path (str): Path to the CSV file to read data from.
+        columns_to_keep (list): Columns to retain in the final CSV output.
+        models (list): List of chat models to be used.
+        chat_prompt_template (str): The prompt template for generating chat messages.
+        columns_for_chat_prompt (list): Columns to be used as the user input in the chat prompt template.
+        num_replicates (int): Number of replicates per model.
+        temp (float): Temperature for the chat model.
+        max_num_tokens (int): Maximum number of tokens for chat completions.
+        save_to_csv (bool): Whether to save results to CSV.
+        output_file (str): Path to the output CSV file.
+        retry_attempts (int): Number of retry attempts for API errors.
+    
+    Returns:
+        None or the last chat response content if save_to_csv is False.
+    """
+    # read the CSV file
+    df = pd.read_csv(csv_path)
+    num_rows = df.shape[0]
+    total_repeats = len(models) * num_replicates
+
+    # add an index column as 'article_num'
+    df['article_num'] = df.index
+
+    # replicate the dataframe based on the total repeats
+    expanded_df = pd.concat([df] * total_repeats, ignore_index=True)
+
+    # generate model and replicate columns
+    model_column = [model for model in models for _ in range(num_replicates * num_rows)]
+    replicate_column = [i + 1 for _ in range(len(models)) for i in range(num_replicates) for _ in range(num_rows)]
+
+    # add the model and replicate columns to the dataframe
+    expanded_df['replicate'] = replicate_column
+    expanded_df['chat_model'] = model_column
+
+    # sort the dataframe by 'article_num' and 'replicate'
+    expanded_df = expanded_df.sort_values(by=['article_num', 'replicate']).reset_index(drop=True)
+
+    # iterate through each row and generate chat completions
+    for index in range(expanded_df.shape[0]):
+        prompt_data = {col: expanded_df.loc[index, col] for col in columns_for_chat_prompt}
+        messages = chat_prompt_template.format_messages(**prompt_data)
+
+        # extract model name and assign the correct chat model
+        model = expanded_df.loc[index, 'chat_model']
+        chat_model = None
+        if model == 'gpt-4o-2024-08-06':
+            chat_model = ChatOpenAI(model="gpt-4o-2024-08-06", temperature=temp, max_tokens=max_num_tokens)
+        elif model == 'gpt-4o-mini':
+            chat_model = ChatOpenAI(model="gpt-4o-mini", temperature=temp, max_tokens=max_num_tokens)
+        elif model == "claude-3-5-sonnet-20240620":
+            chat_model = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=temp, max_tokens=max_num_tokens)
+        elif model == "command-r-plus":
+            chat_model = ChatCohere(model="command-r-plus", temperature=temp, max_tokens=max_num_tokens)
+        elif model == "mistral-large-2407":
+            chat_model = ChatMistralAI(model="mistral-large-2407", temperature=temp, max_tokens=max_num_tokens)
+        elif model == "claude-3-haiku-20240307":
+            chat_model = ChatAnthropic(model="claude-3-haiku-20240307", temperature=temp, max_tokens=max_num_tokens)
+        elif model == "mistral-small-2409":
+            chat_model = ChatMistralAI(model="mistral-small-2409", temperature=temp, max_tokens=max_num_tokens)
+        else:
+            print(f"Model {model} is not supported. Skipping this row.")
+            continue
+
+        # attempt to generate chat response with retries for error handling
+        chat_response_content = "--"
+        chat_response_id = None
+        for attempt in range(retry_attempts):
+            try:
+                chat_response = chat_model.invoke(messages)
+                chat_response_content = chat_response.content
+                chat_response_id = chat_response.id
+                break
+            except Exception as e:
+                error_message = str(e)
+                if attempt == retry_attempts - 1:
+                    print(f"Failed after {retry_attempts} attempts for model {model} on index {index}. Error: {error_message}")
+                else:
+                    print(f"Attempt {attempt + 1} failed for model {model} on index {index}. Retrying in 30 seconds...")
+                    time.sleep(30)
+
+        # create the row with the desired columns
+        data_row = pd.DataFrame({
+            **{col: [expanded_df.loc[index, col]] for col in columns_to_keep},
+            'chat_model': [model],
+            'chat_date': [dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+            'chat_replicate': [expanded_df.loc[index, 'replicate']],
+            'chat_response': [chat_response_content],
+            'chat_response_id': [chat_response_id]
+        })
+
+        # save to CSV if required
+        if not save_to_csv:
+            continue
+        elif not os.path.exists(output_file):
+            data_row.to_csv(output_file, index=False)
+        else:
+            existing_df = pd.read_csv(output_file)
+            updated_df = pd.concat([existing_df, data_row], ignore_index=True)
+            updated_df.to_csv(output_file, index=False)
+    
+    if not save_to_csv:
+        return chat_response_content
+
+```
+
+
+# The Binary Classification Experiment
+
+## Extracting the Full Dataset
+
+We use the [stocknewsapi](https://stocknewsapi.com/) to extract articles related to the stock market. We crafted our request to get all tickers from May 1, 2024 to September 23, 2024. The data was pulled on September 24, 2024 at 23:04 EDT. The resulting data frame was saved as a RDS file. To run the code below, you need to set the `stock_token` environment variable to your API token. In our case, we saved the token as an environment variable using the `usethis::edit_r_environ(scope = 'project')` function.
+
+```{r extract_stock_data, cache=TRUE, results='asis'}
+# pull the stock_api_token from the environment variable
+stock_api_token = Sys.getenv("stock_token")
+
+# crafting the request for the API
+request = paste0(
+  "https://stocknewsapi.com/api/v1/category?", # The base URL for the API
+  "section=alltickers", # We are interested in all tickers
+  "&sentiment=positive,negative", # We want non neutral sentiments
+  "&type=article", # We are interested in articles
+  "&items=100", # We want 100 items per page
+  "&date=05012024-09232024", # The date range
+  "&token=", stock_api_token, # The API token (ours is saved as an ENV Variable)
+  "&page=") # the pages that we will iterate over
+
+# crafting all requests
+all_requests = paste0(request, 1:100)
+
+# pulling the data from the API and cleaning the data prior to saving it
+stock_news_df = purrr::map_df(all_requests, ~jsonlite::fromJSON(.x)$data) |> 
+  # convert the topics and tickers cols into chr (they are lists of strings)
+  dplyr::mutate(tickers = purrr::map_chr(tickers, ~ paste(.x, collapse = ", "))) |> 
+  dplyr::mutate(topics = purrr::map_chr(topics, ~ paste(.x, collapse = ", "))) |> 
+  # convert the date column from character to datetime
+  dplyr::mutate(date = lubridate::dmy_hms(date, tz = "America/New_York"))
+
+# writing the data frame as RDS and CSV files
+readr::write_rds(stock_news_df, "../data/stock_news_data.rds")
+readr::write_csv(stock_news_df, "../data/stock_news_data.csv")
+```
+
+```{r get_column_names, include=FALSE}
+# This code chunk is used to get the column names of the stock_news_df data frame
+# it will be used to print the column names nicely in the text below
+# we do not want to show the code chunk in the final document and hence 
+# we set include=FALSE
+
+# Get column names
+column_names = names(stock_news_df)
+
+# Create a string with all column names except the last one
+all_but_last = paste(column_names[-length(column_names)], collapse = ", ")
+
+# Add the last column name with ", and " before it
+final_string = stringr::str_c(all_but_last, ", and ", column_names[length(column_names)])
+```
+
+The `stock_news_df` data frame contains `r scales::comma(nrow(stock_news_df))` rows and `r ncol(stock_news_df)` columns. The names of the columns are: `r final_string`. Furthermore, the sentiment of the articles is stored in the `sentiment` column. The sentiment of those articles is divided into two categories: `positive`, and `negative`. Their distribution is as follows:
+
+```{r sentiment_table, echo=FALSE, results='asis'}
+pander::pander(table(stock_news_df$sentiment), compact = TRUE)
+```
+
+## Downsampling the Binary Classification Dataset
+
+In this subsection, we filtered out rows with multiple `tickers` in the tickers column, keeping only rows with a single ticker (to ensure data quality). Additionally, we ensured the uniqueness of tickers during downsampling by selecting distinct tickers. 
+
+```{r downsample_binary_classification, results='asis'}
+set.seed(2024) # set the seed for reproducibility
+
+binary_data = stock_news_df |>
+  dplyr::filter(!stringr::str_detect(tickers, ",")) |> # keep rows without commas (i.e., single tickers)
+  dplyr::group_by(sentiment) |> # group by sentiment
+  dplyr::distinct(tickers, .keep_all = TRUE) |>  # keep unique tickers
+  # randomly select <=700 samples per sentiment class (will select all if n < 700)
+  dplyr::slice_sample(n = 700) |> 
+  dplyr::ungroup() # ungroup the data frame
+
+# save the downsampled dataset as RDS and CSV files
+readr::write_rds(binary_data, "../data/binary_classification_data.rds")
+readr::write_csv(binary_data, "../data/binary_classification_data.csv")
+```
+
+The resulting binary classification dataset contains `r scales::comma(nrow(binary_data))` samples. The distribution of the sentiment classes is as follows: 
+
+```{r sentiment_table2, echo=FALSE, results='asis'}
+pander::pander(table(binary_data$sentiment), compact = TRUE)
+```
+
+
+```{r sample_tickers, include=FALSE}
+# This code chunk is used to get the unique tickers in the binary_data data frame
+# it will be used to print the unique tickers nicely in the text below
+
+set.seed(2024)  # set the seed for reproducibility
+
+# get the unique tickers
+unique_tickers = unique(binary_data$tickers)
+
+# get a sample of 5 tickers
+sample_tickers = sample(unique_tickers, size = 5)
+
+# get a random ticker that is not in the sample_tickers
+additional_ticker = setdiff(unique_tickers, sample_tickers) |> sample(size = 1)
+```
+
+Note that the number of classes in the `Negative` sentiment is less than 700. This is because there were fewer than 700 unique tickers with negative sentiment in the original dataset. However, this still produces more samples than our minimum sample size, and hence, we will not be adding more samples. The dataset contains `r length(unique_tickers)` unique tickers, which include: `r paste(sample_tickers, collapse = ", ")` and `r additional_ticker`.
+
+## LLM-based Labeling
+
+### Prompt Construction
+
+For our labeling task, we defined a system prompt that combines *Chain of Thought* learning with *few-shot* learning. The system prompt provides instructions to the LLMs on how to categorize the impact of a news article on a stock's next-day return as either "Positive" or "Negative". The system prompt also includes simulated examples (involving Bitcoin which is not in our stock news dataset) to guide the LLMs in their classification task. Then, we defined a user prompt that presents the news article's title, full text, and the stock ticker symbol to the LLMs (these will be obtained from the CSV file). Both prompts are combined into a chat prompt template that will be used to interact with the LLMs.
+
+
+```{python llm_binary_setup, results='asis'}
+# define the system prompt for the categorization task
+bin_system_prompt = """
+Task: You will be provided with a news article's title, full text, and a stock ticker symbol. Categorize the impact of the news article on a stock's next-day return as either "Positive" or "Negative". 
+
+Instructions:
+1. Read the title and full text of the article.
+2. Analyze how the information might affect the company associated with the given ticker.
+3. Identify key factors such as financial performance, market trends, announcements, and industry developments that may influence investor sentiment.
+4. Assess the overall tone and its potential impact on the stock price.
+
+Classification Guidelines:
+- "Positive": News likely to increase the stock price.
+- "Negative": News likely to decrease the stock price.
+- Focus on the immediate impact (next day return).
+- Weigh the importance of positive vs. negative factors if the article is mixed.
+
+Output Format:
+- <analysis>: [Detailed analysis of the article’s impact]
+- <classification>: [Final classification: "Positive" or "Negative"]
+
+Note: Your classification must strictly be "Positive" or "Negative" based on the immediate expected impact.
+
+Examples:
+
+Example 1:
+Title: Bitcoin Surges as Major Financial Institution Announces BTC Adoption
+Text: In a groundbreaking move, a major financial institution announced that it would start offering Bitcoin as part of its investment portfolios. This decision is expected to significantly increase institutional demand for BTC, boosting investor confidence.
+Ticker: BTC
+<analysis>: The article highlights a major financial institution adopting Bitcoin, which is likely to enhance institutional investment and demand. This news positively affects investor sentiment and suggests an immediate positive impact on BTC's price.
+<classification>: Positive
+
+Example 2:
+Title: Bitcoin Faces Increased Regulatory Scrutiny Amid Fraud Concerns
+Text: Reports have emerged that several governments are planning to implement stricter regulations on cryptocurrency trading, citing concerns about fraud and market manipulation. The regulatory discussions have sparked debate among investors regarding the future of Bitcoin in heavily regulated markets.
+Ticker: BTC
+<analysis>: The article discusses potential regulatory actions that could negatively influence market sentiment by raising fears of restricted trading and heightened scrutiny. This news suggests a likely negative impact on BTC's price in the immediate term.
+<classification>: Negative
+"""
+
+# define the user input string template
+bin_user_prompt = """
+Here is the news article:
+
+<title>
+{title}
+</title>
+
+<text>
+{text}
+</text>
+
+The stock ticker symbol you need to consider is: {tickers}
+"""
+
+# create the chat prompt template
+bin_chat_prompt = ChatPromptTemplate.from_messages([
+    ("system", bin_system_prompt),
+    ("human", bin_user_prompt),
+])
+```
+
+
+
+
+### Labeling the Binary Classification Dataset
+
+In this section, we will use the LLMs to label the sentiment of the news articles in our binary classification dataset. We will use our `generalized_chat_completion` function to interact with the LLMs and generate chat completions for each news article. The chat completions will include the LLM's analysis and classification of the news article's impact on the stock's next-day return. We will run the labeling process for each LLM model and replicate the process three times to ensure consistency in the labeling results.
+
+```{python binary_labeling, cache=TRUE}
+res = generalized_chat_completion(
+  csv_path = '../data/binary_classification_data.csv',
+  columns_to_keep = ['date', 'title', 'text', 'tickers'],
+  models = models,
+  chat_prompt_template = bin_chat_prompt,
+  columns_for_chat_prompt = ['title', 'text', 'tickers'],
+  num_replicates = 5,
+  output_file = '../results/binary_classification_results.csv',
+  )
+```
+
