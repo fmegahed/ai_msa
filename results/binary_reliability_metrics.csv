@@ -1,0 +1,43 @@
+model,coeff.name,pa,pe,coeff.val,coeff.se,conf.int,p.value,w.name
+claude-3-5-sonnet-20240620,Conger's Kappa,0.9927953890489913,0.5235445440124908,0.98488,0.00351,"(0.978,0.992)",0,unweighted
+claude-3-5-sonnet-20240620,Fleiss' Kappa,0.9927953890489913,0.5235451253643866,0.98488,0.00351,"(0.978,0.992)",0,unweighted
+claude-3-5-sonnet-20240620,Percent Agreement,0.9927953890489913,0,0.9927953890489913,0.00167,"(0.99,0.996)",0,unweighted
+claude-3-5-sonnet-20240620,AC1,0.9927953890489913,0.4764548746356179,0.98624,0.0032,"(0.98,0.993)",0,unweighted
+claude-3-5-sonnet-20240620,Brennan-Prediger,0.9927953890489913,0.5,0.98559,0.00334,"(0.979,0.992)",0,unweighted
+claude-3-5-sonnet-20240620,Krippendorff's Alpha,0.9927964271773705,0.5235451253643866,0.98488,0.00351,"(0.978,0.992)",0,unweighted
+command-r-plus,Conger's Kappa,0.9758418740849195,0.5000081552958996,0.95168,0.00696,"(0.938,0.965)",0,unweighted
+command-r-plus,Fleiss' Kappa,0.9758418740849195,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+command-r-plus,Percent Agreement,0.9758418740849195,0,0.9758418740849195,0.00453,"(0.967,0.985)",0,unweighted
+command-r-plus,AC1,0.9758418740849195,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+command-r-plus,Brennan-Prediger,0.9758418740849195,0.5,0.95168,0.00696,"(0.938,0.965)",0,unweighted
+command-r-plus,Krippendorff's Alpha,0.9777021365449571,0.500009859008305,0.9554,0.00562,"(0.944,0.966)",0,unweighted
+mistral-small-2409,Conger's Kappa,0.9867378048780487,0.5056227638314026,0.97317,0.00777,"(0.958,0.988)",0,unweighted
+mistral-small-2409,Fleiss' Kappa,0.9867378048780487,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+mistral-small-2409,Percent Agreement,0.9867378048780487,0,0.9867378048780487,0.00676,"(0.973,1)",0,unweighted
+mistral-small-2409,AC1,0.9867378048780487,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+mistral-small-2409,Brennan-Prediger,0.9867378048780487,0.5,0.97348,0.00774,"(0.958,0.989)",0,unweighted
+mistral-small-2409,Krippendorff's Alpha,0.986662578881696,0.5056288620375858,0.97302,0.00459,"(0.964,0.982)",0,unweighted
+gpt-4o-2024-08-06,Conger's Kappa,0.9613832853025938,0.5001311156142814,0.92275,0.00709,"(0.909,0.937)",0,unweighted
+gpt-4o-2024-08-06,Fleiss' Kappa,0.9613832853025938,0.500134915164161,0.92275,0.00709,"(0.909,0.937)",0,unweighted
+gpt-4o-2024-08-06,Percent Agreement,0.9613832853025938,0,0.9613832853025938,0.00354,"(0.954,0.968)",0,unweighted
+gpt-4o-2024-08-06,AC1,0.9613832853025938,0.4998650848358511,0.92279,0.00709,"(0.909,0.937)",0,unweighted
+gpt-4o-2024-08-06,Brennan-Prediger,0.9613832853025938,0.5,0.92277,0.00709,"(0.909,0.937)",0,unweighted
+gpt-4o-2024-08-06,Krippendorff's Alpha,0.9613888496707058,0.500134915164161,0.92276,0.00709,"(0.909,0.937)",0,unweighted
+claude-3-haiku-20240307,Conger's Kappa,1,0.5086354274841483,1,0.01225,"(0.976,1)",0,unweighted
+claude-3-haiku-20240307,Fleiss' Kappa,1,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+claude-3-haiku-20240307,Percent Agreement,1,0,1,0.01225,"(0.976,1)",0,unweighted
+claude-3-haiku-20240307,AC1,1,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+claude-3-haiku-20240307,Brennan-Prediger,1,0.5,1,0.01225,"(0.976,1)",0,unweighted
+claude-3-haiku-20240307,Krippendorff's Alpha,1,0.5086354274841551,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Conger's Kappa,0.9982708933717579,0.5021584765258411,0.99653,0.00158,"(0.993,1)",0,unweighted
+mistral-large-2407,Fleiss' Kappa,0.9982708933717579,0.502158642626392,0.99653,0.00158,"(0.993,1)",0,unweighted
+mistral-large-2407,Percent Agreement,0.9982708933717579,0,0.9982708933717579,7.9e-4,"(0.997,1)",0,unweighted
+mistral-large-2407,AC1,0.9982708933717579,0.49784135737361834,0.99656,0.00157,"(0.993,1)",0,unweighted
+mistral-large-2407,Brennan-Prediger,0.9982708933717579,0.5,0.99654,0.00158,"(0.993,1)",0,unweighted
+mistral-large-2407,Krippendorff's Alpha,0.9982711425225689,0.502158642626392,0.99653,0.00158,"(0.993,1)",0,unweighted
+gpt-4o-mini,Conger's Kappa,0.9659462055715659,0.5000334386741463,0.93189,0.00711,"(0.918,0.946)",0,unweighted
+gpt-4o-mini,Fleiss' Kappa,0.9659462055715659,0.5000329444273852,0.93189,0.00711,"(0.918,0.946)",0,unweighted
+gpt-4o-mini,Percent Agreement,0.9659462055715659,0,0.9659462055715659,0.00355,"(0.959,0.973)",0,unweighted
+gpt-4o-mini,AC1,0.9659462055715659,0.499967055572627,0.9319,0.00711,"(0.918,0.946)",0,unweighted
+gpt-4o-mini,Brennan-Prediger,0.9659462055715659,0.5,0.93189,0.00711,"(0.918,0.946)",0,unweighted
+gpt-4o-mini,Krippendorff's Alpha,0.9674573336285999,0.5000389310897452,0.93491,0.00675,"(0.922,0.948)",0,unweighted

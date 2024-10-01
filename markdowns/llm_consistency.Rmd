@@ -115,7 +115,7 @@ In our experiments, we selected the following LLMs:
 - `claude-3-5-sonnet-20240620`, which is [Anthropic's current best model](https://www.anthropic.com/news/claude-3-5-sonnet) as of Sept 24, 2024;
 - `command-r-plus`, which is [Cohere's latest model](https://docs.cohere.com/docs/command-r-plus) as of Sept 24, 2024;
 - `mistral-small-2409`, which is the latest small model from [Mistral](https://www.mistral.ai/) as of Sept 24, 2024, 
-- `gpt-4o-2024-08-06`, which is [OpenAI's flagship, stable, model](https://platform.openai.com/docs/models/gpt-4o) as of Sept 24, 2024; 
+- `gpt-4o-2024-08-06`, which is [OpenAI's flagship, stable, model](https://platform.openai.com/docs/models/gpt-4o) as of Sept 24, 2024;   
 -`claude-3-haiku-20240307`, which represents the smallest model provided by [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models#model-names) as of Sept 24, 2024;
 - `mistral-large-2407`, which is the latest large model from [Mistral](https://www.mistral.ai/) as of Sept 24, 2024; and 
 - `gpt-4o-mini`, which is [OpenAI's latest stable and mini model](https://platform.openai.com/docs/models/gpt-4o-mini). 
@@ -311,7 +311,7 @@ We created a custom function, `extract_classification`, to extract the classific
 extract_classification = function(text, valid_words) {
   
   # helper function to drop rows with unwanted words
-  drop_row <- function(row) { 
+  drop_row = function(row) { 
     all(is.na(row) | row == "classification.\n\ntemp")
   }
   
@@ -367,6 +367,64 @@ extract_classification = function(text, valid_words) {
 }
 
 ```
+
+## Custom Functions for Computing the Reliability Metrics
+
+```{r compute_reliability_metrics}
+# Function to get summary statistics for mean percent agreement
+pa_summary = function(df, digits=4){
+  llm_models = unique(df$chat_model)
+  df_summary = data.frame(model = llm_models, mPa = rep(NA, length(llm_models)))
+  
+  for (i in 1:length(llm_models)){
+    m1 = df |> dplyr::filter(chat_model == llm_models[i])
+    df_summary[i,2] = paste0(
+      round(mean(m1$percent_agreement/100), digits), " (", 
+      round(sd(m1$percent_agreement/100), digits),   ")"
+      )
+  }
+  return(df_summary)
+}
+
+# function to compute the other reliability metrics
+# should contain one variable called chat_model,
+# and vars indicates variables for raters
+reliability_coefs = function(df, vars){
+  
+  df_coefs = data.frame(matrix(NA, ncol=9, nrow=42))
+  
+  colnames(df_coefs) = c("model", "coeff.name", "pa", "pe", "coeff.val", "coeff.se", "conf.int", "p.value", "w.name")
+  
+  llm_models = unique(df$chat_model)
+  
+  df_coefs$model = rep(llm_models, each=6)
+  
+  if (is.integer(vars)) vars = colnames(df)[vars]
+  
+  df_rates = df |>
+    dplyr::select(dplyr::all_of(c("chat_model", vars)))
+  
+  for (i in c(1, 7, 13, 19, 25, 31, 37)){
+    m1 = df_rates |>
+      dplyr::filter(chat_model == llm_models[ceiling(i/6)]) |>
+      dplyr::select(-chat_model)
+    
+    df_coefs[i,-1] = irrCAC::conger.kappa.raw(m1)$est
+    df_coefs[(i+1),-1] = irrCAC::fleiss.kappa.raw(m1)$est
+    df_coefs[(i+2),-1] = irrCAC::pa.coeff.raw(m1)$est
+    df_coefs[(i+3),-1] = irrCAC::gwet.ac1.raw(m1)$est
+    df_coefs[(i+4),-1] = irrCAC::bp.coeff.raw(m1)$est
+    df_coefs[(i+5),-1] = irrCAC::krippen.alpha.raw(m1)$est
+    
+  }
+  
+  return(df_coefs)
+  
+}
+
+
+```
+
 
 
 # The Binary Classification Experiment
@@ -621,30 +679,182 @@ readr::write_csv(binary_analysis_df, "../results/binary_analysis_df.csv")
 The analysis dataframe for the binary classification experiment has been created. The dataframe contains the LLM labels for each model and replicate, along with the frequency of the most common label across replicates. The results can be accessed in the [binary_analysis_df CSV file](https://github.com/fmegahed/ai_msa/blob/main/results/binary_analysis_df.csv).
 
 
-### Tabulating Simple Percent Agreement
+### Computing the Reliability Metrics
 
-```{r binary_percent_agreement_viz, results='asis'}
-# Summarize the distribution of percent agreement by chat model
-summary_table = 
-  binary_analysis_df |>
-  dplyr::group_by(chat_model) |>
-  dplyr::summarize(
-    count = dplyr::n(),
-    mean_agreement = mean(percent_agreement, na.rm = TRUE),
-    sd_agreement = sd(percent_agreement, na.rm = TRUE),
-    q1 = quantile(percent_agreement, 0.25, na.rm = TRUE),
-    q3 = quantile(percent_agreement, 0.75, na.rm = TRUE),
-    min_agreement = min(percent_agreement, na.rm = TRUE),
-    max_agreement = max(percent_agreement, na.rm = TRUE)
-  ) |>
-  dplyr::arrange(desc(mean_agreement))
+```{r binary_reliability_metrics, results='asis'}
+# binary classification reliability metrics
+df = reliability_coefs(binary_analysis_df, 6:10 )
 
-# print the table nicely with gt
-gt::gt(summary_table) |>
-  gt::fmt_number(columns = c('mean_agreement', 'sd_agreement', 'q1', 'q3', 'min_agreement', 'max_agreement'), decimals = 2) |>
-  gt::tab_header(title = "Summary of Percent Agreement by Chat Model") |>
-  gt::fmt_number(columns = c('count'), use_seps = TRUE) |>
-  gt::fmt_number(columns = c('mean_agreement', 'sd_agreement', 'q1', 'q3', 'min_agreement', 'max_agreement'), use_seps = TRUE) |>
-  gt::fmt_missing(columns = c('mean_agreement', 'sd_agreement', 'q1', 'q3', 'min_agreement', 'max_agreement'), missing_text = "NA")
+cat("The reliability metrics for the binary classification experiment are as follows:\n")
+DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE)) |> 
+  DT::formatRound(columns = c(3:8), digits = 3)
+
+
+cat("The mean percent agreement for each model is as follows:\n")
+pa_table = pa_summary(binary_analysis_df, digits = 3) |> 
+  tidyr::separate(
+    mPa, into = c("mean_percent_agreement", "sd_percent_agreement"), 
+    sep = " \\("
+    ) |>
+  dplyr::mutate(
+    mean_percent_agreement = as.numeric(mean_percent_agreement),
+    sd_percent_agreement = 
+      as.numeric(stringr::str_remove(sd_percent_agreement, "\\)"))
+    )
+  
+cat(
+  paste(
+    'From the table above, we can see that the standard deviation of the percent agreement is quite low for,',
+    paste(pa_table$model[which(pa_table$sd_percent_agreement < 0.1)], collapse = ', '),
+    'indicating a high level of agreement among those LLMs in the binary classification experiment. However, the others models have higher standard deviations, especially for the',
+    pa_table$model[which(pa_table$sd_percent_agreement > 0.25)],
+    'model. \n')
+)
+
+cat("The table below shows all the estimated coefficient values for the reliability metrics in the binary classification experiment:\n")
+df_wide = df |> 
+  dplyr::select(model, coeff.name, coeff.val) |> 
+  tidyr::pivot_wider(names_from = coeff.name, values_from = coeff.val)
+
+df_wide = dplyr::left_join(
+  x = pa_table |> dplyr::select(-sd_percent_agreement), y = df_wide, 
+  by = "model"
+) |> 
+  dplyr::rename(
+    `Percent Agreement (with NA Penalty)` = mean_percent_agreement,
+    `Percent Agreement (Ignoring NA)` = `Percent Agreement`
+    ) |> 
+  dplyr::select(
+    model, 
+    `Percent Agreement (with NA Penalty)`, `Percent Agreement (Ignoring NA)`, 
+    dplyr::everything() 
+    )
+
+# get the models with high standard deviation
+high_pa_sd_models_index = which(pa_table$sd_percent_agreement > 0.1)
+
+# a summarized table of the metrics
+df_wide = df_wide |> 
+  # rounding numeric columns to 3 decimal places
+  dplyr::mutate(
+    dplyr::across(dplyr::where(is.numeric), ~ round(., 3)),
+    high_pa_sd = ifelse(
+      model %in% pa_table$model[pa_table$sd_percent_agreement > 0.1],
+      TRUE, FALSE
+      ),
+    `API Costs / 1M Input Tokens` = c(3, 2.5, 0.2, 2.5, 0.25, 2, 0.15),
+    `API Costs / 1M Output Tokens`= c(15, 10, 0.6, 10, 1.25, 6, 0.6)
+    )
+
+# save the reliability metrics dataframe as RDS and CSV files
+readr::write_rds(df_wide, "../results/binary_reliability_metrics_means.rds")
+readr::write_csv(df_wide, "../results/binary_reliability_metrics_means.csv")
+readr::write_rds(pa_table, "../results/binary_pa_summary.rds")
+readr::write_csv(pa_table, "../results/binary_pa_summary.csv")
+readr::write_rds(df, "../results/binary_reliability_metrics.rds")
+readr::write_csv(df, "../results/binary_reliability_metrics.csv")
 ```
 
+The CSV files containing the reliability metrics for the binary classification experiment can be accessed at [binary_reliability_metrics_means.csv](https://github.com/fmegahed/ai_msa/blob/main/binary_reliability_metrics_means.csv), [binary_pa_summary.csv](https://github.com/fmegahed/ai_msa/blob/main/binary_pa_summary.csv), and [binary_reliability_metrics.csv](https://github.com/fmegahed/ai_msa/blob/main/binary_reliability_metrics.csv). 
+
+
+The estimated coefficient mean values are summarized in the table below. Note that we use the following conventions for the rendered table:  
+
+- The `API Costs` columns represent the estimated costs for 1 million input and output tokens for each model, as of Sept 2024 (i.e., when the data was pulled). For the readers' convenience, we have color-coded the text within the API cost columns (such that darker colors correspond to more expensive APIs).   
+- **Rows with** a **light coral background** indicate models with high standard deviations in percent agreement, i.e., they should not be used for this binary classification task.  
+- The maximum values in each of the reliability coefficient columns (excluding the to be ignored rows) are bolded and underlined for easy identification.  
+- The table is scrollable horizontally to view all columns. Furthermore, the user can sort any given column by clicking on the column header.
+
+```{r binary_reliability_table, results='asis', class.source = 'fold-hide'}
+DT::datatable(
+  df_wide |> 
+    dplyr::mutate(
+      input_colors = dplyr::case_when(
+        `API Costs / 1M Input Tokens` <= 0.25 ~ "#fcae91",
+        `API Costs / 1M Input Tokens` <= 1 ~ "#fcae91",
+        `API Costs / 1M Input Tokens` <= 2 ~ "#de2d26",
+        TRUE ~ "#a50f15"
+      ),
+      output_colors = dplyr::case_when(
+        `API Costs / 1M Output Tokens` <= 1 ~ "#fcae91",
+        `API Costs / 1M Output Tokens` <= 5 ~ "#fcae91",
+        `API Costs / 1M Output Tokens` <= 10 ~ "#de2d26",
+        TRUE ~ "#a50f15"
+      )
+    ) |> 
+    dplyr::select(
+      model, `API Costs / 1M Input Tokens`, `API Costs / 1M Output Tokens`, dplyr::everything()
+      ), 
+  rownames = FALSE, 
+  extensions = c("FixedColumns"),
+  options = list(
+    pageLength = 7, 
+    scrollX = TRUE,
+    fixedColumns = list(leftColumns = 3), 
+    columnDefs = list(
+      list(visible = FALSE, targets = c(10, 11, 12))
+    )
+  )
+) |> 
+  DT::formatCurrency(columns = c(2,3), digits = 2) |> 
+  DT::formatRound(columns = c(5:10), digits = 3) |> 
+  DT::formatStyle(
+    # Apply the style to all columns based on the high_pa_sd column
+    columns = names(df_wide),  # Apply the style to all columns
+    target = 'row',
+    backgroundColor = DT::styleEqual(
+      c(TRUE, FALSE), c('lightcoral', 'white')
+    )  # Color rows where high_pa_sd is TRUE
+  ) |> 
+  DT::formatStyle(
+    columns = 2,  # Apply to the 2nd column (API Costs / 1M Input Tokens)
+    valueColumns = 'input_colors',
+    color = DT::JS("value"),  # Use color from 'input_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  DT::formatStyle(
+    columns = 3,  # Apply to the 3rd column (API Costs / 1M Output Tokens)
+    valueColumns = 'output_colors',
+    color = DT::JS("value"),  # Use color from 'output_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  # Continue with your additional formatStyle calls for bolding and underlining max values
+  DT::formatStyle(
+    'Percent Agreement (with NA Penalty)',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Percent Agreement (with NA Penalty)`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Percent Agreement (with NA Penalty)`[-high_pa_sd_models_index])), 'underline')
+  ) |> 
+  DT::formatStyle(
+    'Percent Agreement (Ignoring NA)',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Percent Agreement (Ignoring NA)`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Percent Agreement (Ignoring NA)`[-high_pa_sd_models_index])), 'underline')
+  ) |>
+  # Continue with other formatStyle calls for Conger's Kappa, Fleiss' Kappa, etc.
+  DT::formatStyle(
+    'Conger\'s Kappa',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Conger's Kappa`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Conger's Kappa`[-high_pa_sd_models_index])), 'underline')
+  ) |> 
+  DT::formatStyle(
+    'Fleiss\' Kappa',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Fleiss' Kappa`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Fleiss' Kappa`[-high_pa_sd_models_index])), 'underline')
+  ) |>
+  DT::formatStyle(
+    'AC1',
+    fontWeight = DT::styleEqual(c(max(df_wide$AC1[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$AC1[-high_pa_sd_models_index])), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Brennan-Prediger',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Brennan-Prediger`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Brennan-Prediger`[-high_pa_sd_models_index])), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Krippendorff\'s Alpha',
+    fontWeight = DT::styleEqual(c(max(df_wide$`Krippendorff's Alpha`[-high_pa_sd_models_index])), 'bold'),
+    textDecoration = DT::styleEqual(c(max(df_wide$`Krippendorff's Alpha`[-high_pa_sd_models_index])), 'underline')
+  )
+```
+
+ 
