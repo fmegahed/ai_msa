@@ -7,6 +7,8 @@ author:
     affiliation: Department of Mathematics, University of Dayton
   - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a>]"
     affiliation: Farmer School of Business, Miami University
+  - name: "Gabe Lee ^[Email: leeyh2@miamioh.edu | Phone: +1-513-529-2164 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/ leeyh2\">Miami University Official</a>]"
+    affiliation: Farmer School of Business, Miami University
   - name: "Sven Knoth ^[Email: knoth@hsu-hh.de | Phone: +49-40-6541-3400| Website: <a href=\"https://www.hsu-hh.de/compstat/en/sven-knoth-2\">Helmut-Schmidt-Universität Official</a>]"
     affiliation: Helmut-Schmidt-Universität
   - name: "Katie Ross^[Email: rossks@miamioh.edu | Phone: +1-513-529-4826 | Website: <a href=\"https://miamioh.edu/fsb/departments/information-systems-analytics/index.html\">Miami University Official</a>]"
@@ -992,9 +994,55 @@ ggplot2::ggsave("../figs/binary_classification_bar_chart.png", width = 6.5, heig
 
 ```
 
-To further illustrate the impact of the NA penalty on the percent agreement, let us examine the distribution of the labels across the LLMs via the two histograms below. The first histogram shows the distribution of the labels while ignoring `NAs`, while the second histogram shows the distribution of the labels with the NA penalty. 
+To further illustrate this idea, we present a bar chart of the distribution of LLM labels for the binary classification task. The chart shows the percentage of labels assigned by each LLM model across all articles and replicates. **Note that 0 corresponds to the absence of a label among the five replicates (i.e., all the labels were `NA`s).**. The chart provides insights into the consistency of the LLMs in assigning labels to the news articles. 
 
-🔴<span style="color:#c00000; font-weight:bold;">Katie PLEASE WORK ON THIS. THANK YOU.</span> ❗🔴
+
+```{r binary_perc_with_na_plot, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+chat_model_colors = RColorBrewer::brewer.pal(7, "Paired")
+
+binary_analysis_df |>
+  dplyr::group_by(chat_model, percent_agreement) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf)) |>
+  ggplot2::ggplot(ggplot2::aes(x = percent_agreement, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_wrap(~chat_model, ncol = 2) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,100,20)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 110), breaks = seq(0,100,25)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Penalized Agreement within a LLM Model" |> 
+      stringr::str_wrap(width = 50),
+    x = "Percent Agreement (NA Penalty)",
+    y = "Percent of Articles with Agreement (NA Penalty) Denoted by X-Axis" |> 
+      stringr::str_wrap(width = 50),
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/binary_perc_with_na_plot.png", width = 6.5, height = 8, dpi = 600)
+
+```
+
 
 Additionally, we provide two example images capturing the total number of tokens and their corresponding costs for the two mistral models. The first image shows that we have consumed approximately 11.5 million tokens, with 5.9 million total tokens  consumed by the `mistral-large-2407` model, and the remaining 5.6 million total tokens consumed by the `mistral-small-2409` models. On the other hand, there is a significant difference in the cost of the tokens consumed by the two models. The `mistral-large-2407` model usage was \$15.58. In contrast, the `mistral-small-2409` model consumed only \$1.45 USD. The costs are consistent with the number of tokens consumed by each model and the per token costs presented earlier in this document.
 
@@ -1224,8 +1272,8 @@ validity_df |>
   ggplot2::labs(
     title = "NA Penalized Agreement with the StockNewsAPI Labels by LLM Model" |> 
       stringr::str_wrap(width = 50),
-    x = "LLM Model",
-    y = "Agreement (%)",
+    x = "Percent Agreement (NA Penalty)",
+    y = "Percent of Articles with Agreement (NA Penalty) Denoted by X-Axis",
     fill = "LLM Model",
     caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
   ) +
@@ -1270,8 +1318,8 @@ validity_df |>
   ggplot2::labs(
     title = "NA Ignored Agreement with the StockNewsAPI Labels by LLM Model" |> 
       stringr::str_wrap(width = 50),
-    x = "LLM Model",
-    y = "Agreement (%)",
+    x = "Percent Agreement (NA Dropped)",
+    y = "Percent of Articles with Agreement (NA Dropped) Denoted by X-Axis",
     fill = "LLM Model",
     caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
   ) +
@@ -1325,8 +1373,8 @@ validity_df |>
                      vjust = -0.5, size = 3, fontface = "bold") +
   ggplot2::labs(
     title = "NA Penalized Agreement with the StockNewsAPI Labels",
-    x = "LLM Model",
-    y = "Agreement (%)",
+    x = "Percent Agreement (NA Penalty)",
+    y = "Percent of Articles with Agreement (NA Penalty) Denoted by X-Axis",
     fill = "LLM Model",
     caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
   ) +
@@ -1382,8 +1430,8 @@ validity_df |>
                      vjust = -0.5, size = 3, fontface = "bold") +
   ggplot2::labs(
     title = "NA Ignored Agreement with the StockNewsAPI Labels",
-    x = "LLM Model",
-    y = "Agreement (%)",
+    x = "Percent Agreement (NA Ignored)",
+    y = "Percent of Articles with Agreement (NA Ignored) Denoted by X-Axis",
     fill = "LLM Model",
     caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
   ) +
