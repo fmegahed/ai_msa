@@ -426,6 +426,45 @@ reliability_coefs = function(df, vars){
 ```
 
 
+## Custom Functions to Compute Agreement with Gold Standard
+
+In the chunk below, we present two functions:  
+
+- `calculate_agreement`: This function calculates the agreement between the replicates and the gold standard. It takes the replicates and the gold standard as input and returns the agreement percentage. The function also has an optional parameter `na` to handle missing values. If `na = 0`, the function will not consider missing values in the calculation.  
+
+- `ensemble_reps`: This function ensembles the replicates by selecting the most common value. It takes the replicates as input and returns the most common value. The function also has an optional parameter `na` to handle missing values. If `na = 0`, the function will not consider missing values in the calculation. In case of ties, the function randomly selects one of the most common values.
+
+```{r compute_agreement_with_gold_standard}
+calculate_agreement = function(reps, ground_truth, na = 0) {
+  na_rm = dplyr::if_else(na == 0, T, F, missing = F)
+  
+  matches = sum(reps == ground_truth, na.rm = na_rm)
+  total_reps = length(reps)
+  agreement = matches / total_reps
+  
+  return(agreement)
+}
+
+# ensemble function to ensemble the replicates
+ensemble_reps = function(reps, na = 0){
+  
+  # handling of NAs
+  na_rm = dplyr::if_else(na == 0, "no", "ifany", missing = "ifany")
+  
+  # get the most common value
+  freq_table = table(reps)
+  max_freq = max(freq_table)
+  most_common_values = names(freq_table)[freq_table == max_freq]
+  
+  # randomly select one of the most common values
+  most_common = sample(most_common_values, 1)
+  
+  return(most_common)
+
+}
+
+```
+
 
 # The Binary Classification Experiment
 
@@ -862,7 +901,7 @@ DT::datatable(
 ```
 
  
-## Initial Findings from the Intra Reliability Analysis {.tabset .tabset-fade .tabset-pills}
+### Initial Findings from the Intra Reliability Analysis {.tabset .tabset-fade .tabset-pills}
 
 From the obtained labels, we noted that some LLMs had very interesting results. For instance, the `claude-3-haiku-20240307` model had a high standard deviation in percent agreement, indicating some inconsistency in its labels. It is important to note that the interpretation of this result is somewhat difficult since e.g., the model's third quartile for its classification indicates that it is quite reliable. This discrepancy mainly arises from **how we approached the counting of labels that did not match our binary requirements**. Not only did we count those as `NAs`, but we also penalized the models for not providing a valid label by not removing the NAs from our simple percent agreement computations. Hence, the high standard deviation in percent agreement for the `claude-3-haiku-20240307` model may not be necessarily indicative of its performance **if** a different counting procedure is utilized. Below we present a bar chart of the most frequent labels for each model across replicates.
 
@@ -926,7 +965,7 @@ binary_classification_results |>
     y = "Percent of Labels",
     fill = "Label",
     caption = stringr::str_wrap(
-      "Notes: The experiment was run on a sample of ~1400 news articles labelled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024.",
+      "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024.",
       width = 120)
   ) +
   # Customize theme
@@ -949,7 +988,7 @@ binary_classification_results |>
     limits = c(0, 110), breaks = seq(0, 100, 25), labels = scales::label_percent(scale = 1)
     )
 
-ggplot2::ggsave("../figs/binary_classification_bar_chart.png", width = 6, height = 9, dpi = 600)
+ggplot2::ggsave("../figs/binary_classification_bar_chart.png", width = 6.5, height = 9, dpi = 600)
 
 ```
 
@@ -960,15 +999,467 @@ To further illustrate the impact of the NA penalty on the percent agreement, let
 Additionally, we provide two example images capturing the total number of tokens and their corresponding costs for the two mistral models. The first image shows that we have consumed approximately 11.5 million tokens, with 5.9 million total tokens  consumed by the `mistral-large-2407` model, and the remaining 5.6 million total tokens consumed by the `mistral-small-2409` models. On the other hand, there is a significant difference in the cost of the tokens consumed by the two models. The `mistral-large-2407` model usage was \$15.58. In contrast, the `mistral-small-2409` model consumed only \$1.45 USD. The costs are consistent with the number of tokens consumed by each model and the per token costs presented earlier in this document.
 
 
-### Tokens Consumed {-}
+#### Tokens Consumed {-}
 
 ```{r binary_tokens_consumed, echo=FALSE, out.width='100%', fig.align='center'}
 knitr::include_graphics("../img/mistral_api_usage.png")
 ```
 
-### API Costs for the Mistral Models {-}
+#### API Costs for the Mistral Models {-}
 
 ```{r binary_api_costs, echo=FALSE, out.width='100%', fig.align='center'}
 knitr::include_graphics("../img/mistral_api_costs.png")
 ```
+
+## Validity of the Binary Classification Labels (Comparison with "StockNewsAPI" Labels)
+
+In this section, we will compare the LLM labels with the labels provided by the StockNewsAPI (**gold standard**). We will calculate the agreement between the LLM labels and the "gold standard" labels using various reliability metrics. We will also assess the validity of the LLM labels by comparing them with the "gold standard" labels.
+
+```{r binary_classification_validity, results='hold', message=FALSE}
+stock_sentiment_df = readr::read_csv("../data/stock_news_data.csv") |> 
+  dplyr::select(date, title, text, tickers, sentiment)
+
+validity_df = 
+  readr::read_csv("../results/binary_analysis_df.csv") |> 
+  dplyr::select(-percent_agreement) |> 
+  dplyr::left_join(stock_sentiment_df, by = c("date", "title", "text", "tickers")) |> 
+  # percent of rep_1, rep_2, .., agreement with the gold standard
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    agreement_na_penalty = calculate_agreement(
+      reps = dplyr::c_across(dplyr::starts_with("rep_")),
+      ground_truth = dplyr::c_across(dplyr::contains("sentiment"))
+    ),
+    agreement_na_as_na = calculate_agreement(
+      reps = dplyr::c_across(dplyr::starts_with("rep_")),
+      ground_truth = dplyr::c_across(dplyr::contains("sentiment")),
+      na = NA
+    )
+  ) 
+
+# save the validity dataframe as RDS and CSV files
+readr::write_rds(validity_df, "../results/binary_validity_df.rds")
+readr::write_csv(validity_df, "../results/binary_validity_df.csv")
+
+```
+
+### Tabulating the Validity Metrics {.tabset .tabset-fade .tabset-pills}
+
+The validity metrics for the binary classification experiment are presented in the table below. The table includes the percent agreement with the **Original StockNewsAPI** labels, calculated using two different methods:   
+  - one that penalizes `NAs`, and  
+  - one that drops any run (`chat_model` $\times$ `article`) that contains at least one invalid response. 
+  
+#### Overall {-}
+
+```{r binary_validity_table, results='asis'}
+validity_df |> 
+  dplyr::group_by(chat_model) |>
+  dplyr::summarize(
+    `Mean Agreement (NA Penalty)` = mean(agreement_na_penalty) |> round(digits = 3),
+    `Mean Agreement (NA Dropped)` = mean(agreement_na_as_na, na.rm = TRUE) |> round(digits = 3)
+  ) |> 
+  dplyr::mutate(
+    `API Costs / 1M Input Tokens` = c(3,  0.25, 2.5, 2.5, 0.15, 2, 0.2),
+    `API Costs / 1M Output Tokens`= c(15, 1.25,  10,  10,  0.6, 6, 0.6),
+    input_colors = dplyr::case_when(
+      `API Costs / 1M Input Tokens` <= 0.25 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 2 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    ),
+    output_colors = dplyr::case_when(
+      `API Costs / 1M Output Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 5 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 10 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    )
+  ) -> validity_table
+
+# calculate the maximum agreement values for styling
+max_agreement_na_penalty = max(validity_table$`Mean Agreement (NA Penalty)`) 
+max_agreement_na_dropped = max(validity_table$`Mean Agreement (NA Dropped)`) 
+
+# render the table
+validity_table |> 
+  dplyr::select(chat_model, `API Costs / 1M Input Tokens`, `API Costs / 1M Output Tokens`, dplyr::everything()) |>
+  dplyr::arrange(dplyr::desc(`Mean Agreement (NA Penalty)`)) |>
+  DT::datatable(
+    rownames = FALSE, 
+    extensions = c("FixedColumns"),
+    options = list(
+      pageLength = 7, 
+      scrollX = TRUE,
+      fixedColumns = list(leftColumns = 3),
+      columnDefs = list(
+        list(visible = FALSE, targets = c(5,6))
+      )
+    )
+  ) |> 
+  DT::formatCurrency(columns = c(2,3), digits = 2) |> 
+  DT::formatStyle(
+    columns = 2,  # Apply to the 2nd column (API Costs / 1M Input Tokens)
+    valueColumns = 'input_colors',
+    color = DT::JS("value"),  # Use color from 'input_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  DT::formatStyle(
+    columns = 3,  # Apply to the 3rd column (API Costs / 1M Output Tokens)
+    valueColumns = 'output_colors',
+    color = DT::JS("value"),  # Use color from 'output_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |> 
+  DT::formatRound(columns = c(4:5), digits = 3) |> 
+  DT::formatStyle(
+    'Mean Agreement (NA Penalty)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_penalty), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_penalty), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Mean Agreement (NA Dropped)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_dropped), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_dropped), 'underline')
+  )
+```
+
+#### By Model and Sentiment {-}
+
+
+```{r binary_validity_table_by_sentiment, results='asis'}
+validity_df |> 
+  dplyr::group_by(chat_model, sentiment) |>
+  dplyr::summarize(
+    `Mean Agreement (NA Penalty)` = mean(agreement_na_penalty) |> round(digits = 3),
+    `Mean Agreement (NA Dropped)` = mean(agreement_na_as_na, na.rm = TRUE) |> round(digits = 3)
+  ) |> 
+  dplyr::ungroup() |> 
+  dplyr::mutate(
+    `API Costs / 1M Input Tokens` = c(3,3,  0.25,0.25, 2.5,2.5, 2.5,2.5, 0.15,0.15, 2,2, 0.2,0.2),
+    `API Costs / 1M Output Tokens`= c(15,15, 1.25,1.25,  10,10,  10,10,  0.6,0.6, 6,6, 0.6,0.6),
+    input_colors = dplyr::case_when(
+      `API Costs / 1M Input Tokens` <= 0.25 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 2 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    ),
+    output_colors = dplyr::case_when(
+      `API Costs / 1M Output Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 5 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 10 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    )
+  ) -> validity_table_by_sentiment
+
+# calculate the maximum agreement values for styling
+max_agreement_na_penalty = max(validity_table_by_sentiment$`Mean Agreement (NA Penalty)`)
+max_agreement_na_dropped = max(validity_table_by_sentiment$`Mean Agreement (NA Dropped)`)
+
+# render the table
+validity_table_by_sentiment |> 
+  dplyr::select(chat_model, sentiment, `API Costs / 1M Input Tokens`, `API Costs / 1M Output Tokens`, dplyr::everything()) |>
+  dplyr::arrange(sentiment, dplyr::desc(`Mean Agreement (NA Penalty)`)) |>
+  DT::datatable(
+    rownames = FALSE, 
+    extensions = c("FixedColumns"),
+    options = list(
+      pageLength = 14, 
+      scrollX = TRUE,
+      fixedColumns = list(leftColumns = 4),
+      columnDefs = list(
+        list(visible = FALSE, targets = c(6,7))
+      )
+    )
+  ) |> 
+  DT::formatCurrency(columns = c(3,4), digits = 2) |> 
+  DT::formatStyle(
+    columns = 3,  # Apply to the 3rd column (API Costs / 1M Input Tokens)
+    valueColumns = 'input_colors',
+    color = DT::JS("value"),  # Use color from 'input_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  DT::formatStyle(
+    columns = 4,  # Apply to the 4th column (API Costs / 1M Output Tokens)
+    valueColumns = 'output_colors',
+    color = DT::JS("value"),  # Use color from 'output_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |> 
+  DT::formatRound(columns = c(5:6), digits = 3) |> 
+  DT::formatStyle(
+    'Mean Agreement (NA Penalty)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_penalty), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_penalty), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Mean Agreement (NA Dropped)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_dropped), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_dropped), 'underline')
+  )
+
+```
+
+### Visualizing the Validity Metrics {.tabset .tabset-fade .tabset-pills}
+
+The validity metrics for the binary classification experiment are visualized in the four plots below. The first two plots show the agreement with the StockNewsAPI labels by LLM model, with the first plot penalizing `NAs` and the second plot ignoring `NAs`. The third and fourth plots show the agreement with the StockNewsAPI labels by LLM model and sentiment, with the first plot penalizing `NAs` and the second plot ignoring `NAs`.
+
+#### Overall NA Penalized Agreement {-}
+
+```{r binary_validity_plot, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+chat_model_colors = RColorBrewer::brewer.pal(7, "Paired")
+
+validity_df |>
+  dplyr::group_by(chat_model, agreement_na_penalty) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf)) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_penalty, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_wrap(~chat_model, ncol = 2) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Penalized Agreement with the StockNewsAPI Labels by LLM Model" |> 
+      stringr::str_wrap(width = 50),
+    x = "LLM Model",
+    y = "Agreement (%)",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/binary_agreement_na_penalized_overall.png", width = 6.5, height = 9, dpi = 600)
+
+```
+
+
+#### Overall NA Dropped Agreement {-}
+
+```{r binary_validity_plot_na_dropped, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+validity_df |>
+  tidyr::drop_na(agreement_na_as_na) |>
+  dplyr::group_by(chat_model, agreement_na_as_na) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf)) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_as_na, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = "black") +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_wrap(~chat_model, ncol = 2) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Ignored Agreement with the StockNewsAPI Labels by LLM Model" |> 
+      stringr::str_wrap(width = 50),
+    x = "LLM Model",
+    y = "Agreement (%)",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/binary_agreement_na_dropped_overall.png", width = 6.5, height = 9, dpi = 600)
+
+```
+
+#### By Sentiment: NA Penalized  {-}
+
+```{r binary_validity_plot_by_sentiment, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+validity_df |>
+  dplyr::group_by(chat_model, sentiment, agreement_na_penalty) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(
+    chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf) |> 
+      forcats::fct_recode(
+    "sonnet3.5" = "claude-3-5-sonnet-20240620",
+    "command-r+" = "command-r-plus",
+    "mistral-s" = "mistral-small-2409",
+    "gpt4o" = "gpt-4o-2024-08-06",
+    "haiku3" = "claude-3-haiku-20240307",
+    "mistral-l" = "mistral-large-2407",
+    "gpt4om" = "gpt-4o-mini"
+  ),
+    ) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_penalty, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_grid(rows = dplyr::vars(chat_model), cols = dplyr::vars(sentiment)) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 110), breaks = seq(0,100,25)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Penalized Agreement with the StockNewsAPI Labels",
+    x = "LLM Model",
+    y = "Agreement (%)",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/binary_agreement_na_penalized_by_sentiment.png", width = 6.5, height = 10, dpi = 600)
+
+```
+
+
+#### By Sentiment: NA Dropped {-}
+
+```{r binary_validity_plot_by_sentiment_na_dropped, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+validity_df |>
+  tidyr::drop_na(agreement_na_as_na) |>
+  dplyr::group_by(chat_model, sentiment, agreement_na_as_na) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(
+    chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf) |> 
+      forcats::fct_recode(
+    "sonnet3.5" = "claude-3-5-sonnet-20240620",
+    "command-r+" = "command-r-plus",
+    "mistral-s" = "mistral-small-2409",
+    "gpt4o" = "gpt-4o-2024-08-06",
+    "haiku3" = "claude-3-haiku-20240307",
+    "mistral-l" = "mistral-large-2407",
+    "gpt4om" = "gpt-4o-mini"
+  ),
+    ) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_as_na, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_grid(rows = dplyr::vars(chat_model), cols = dplyr::vars(sentiment)) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 110), breaks = seq(0, 100, 25)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Ignored Agreement with the StockNewsAPI Labels",
+    x = "LLM Model",
+    y = "Agreement (%)",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/binary_agreement_na_dropped_by_sentiment.png", width = 6.5, height = 10, dpi = 600)
+
+```
+
+
+## Validity of the Binary Classification Labels (Comparison with "Ground Truth" Impacts)
+
+In this section, we will repeat our analysis from the previous section, but this time we will compare the LLM labels with the "ground truth" effects to what actually happened to the stock prices. We will calculate the agreement between the LLM labels and the "ground truth" labels using our agreement metrics.
+
+
+🔴<span style="color:#c00000; font-weight:bold;">Brooke and Katie PLEASE WORK ON THIS. THANK YOU.</span> ❗🔴
+
+
+
+## Ensembling the Binary Classification Labels and Comparing with "StockNewsAPI" Labels
+
+Many practitioners may run their experiment only once and may not have the luxury of running multiple replicates to assess the reliability of the LLM labels. In such cases, ensembling the labels from multiple replicates may provide a more reliable estimate of the LLM's performance. In this section, we will ensemble the binary classification labels from the replicates and assess the validity of the ensembled labels.
+
+```{r binary_classification_ensembling, results='asis', message=FALSE}
+# read the binary classification ensembling results
+ensembling_df = 
+  validity_df = 
+  readr::read_csv("../results/binary_analysis_df.csv") |> 
+  dplyr::select(date:rep_1) |> # as if they only ran the first replicate 
+  dplyr::left_join(stock_sentiment_df, by = c("date", "title", "text", "tickers")) |> 
+  tidyr::pivot_wider(names_from = "chat_model", values_from = "rep_1") |> 
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    agreement_na_penalty = calculate_agreement(
+      reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
+      ground_truth = dplyr::c_across(dplyr::contains("sentiment"))
+    ),
+    agreement_na_as_na = calculate_agreement(
+      reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
+      ground_truth = dplyr::c_across(dplyr::contains("sentiment")),
+      na = NA
+    ),
+    ensembled_labels_na_ignored = ensemble_reps(
+      reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
+      na = 0
+    ),
+    ensembled_labels_na_as_na = ensemble_reps(
+      reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
+      na = NA
+    ),
+    ensembled_agreement = sentiment == ensembled_labels_na_ignored
+  ) 
+
+# computing the overall agreement with the ensembled labels
+mean_ensembled_agreement = mean(ensembling_df$ensembled_agreement)
+
+# save the ensembling dataframe as RDS and CSV files
+readr::write_rds(ensembling_df, "../results/binary_ensembling_df.rds")
+readr::write_csv(ensembling_df, "../results/binary_ensembling_df.csv")
+
+cat(sprintf
+    ("The mean agreement with the ensembled labels (NA Ignored) is %.2f%%, which is slightly higher (no practical significance) than the 84.7%% agreement obtained by the gpt4o-mini model for the similar case where NAs where penalized for.\n", mean_ensembled_agreement*100)
+    )
+```
+
+Hence, for this particular example, ensembling the labels from multiple replicates did not significantly improve the agreement with the *StockNewsAPI* labels. The mean agreement with the ensembled labels (NA Ignored) is `r round(mean_ensembled_agreement*100, digits = 2)`%, which is slightly higher (no practical significance) than the 84.7% agreement obtained by the `gpt4o-mini` model for the similar case where `NA`s were penalized for.
 
