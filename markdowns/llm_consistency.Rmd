@@ -806,8 +806,8 @@ The CSV files containing the reliability metrics for the binary classification e
 The estimated coefficient mean values are summarized in the table below. Note that we use the following conventions for the rendered table:  
 
 - The `API Costs` columns represent the estimated costs for 1 million input and output tokens for each model, as of Sept 2024 (i.e., when the data was pulled). For the readers' convenience, we have color-coded the text within the API cost columns (such that darker colors correspond to more expensive APIs).   
-- **Rows with** a **light coral background** indicate models with high standard deviations in percent agreement, i.e., they should not be used for this binary classification task.  
-- The maximum values in each of the reliability coefficient columns (excluding the to be ignored rows) are bolded and underlined for easy identification.  
+- **Rows with** a **light coral background** indicate models with high standard deviations in percent agreement.  
+- The maximum values in each of the reliability coefficient columns (excluding those with the highest standard deviation since some practitioners might want to avoid them) are bolded and underlined for easy identification. Otherwise, the `claude-3-haiku-20240307	` model would have the highest values for all metrics except the `Percent Agreement (with NA Penalty`. 
 - The table is scrollable horizontally to view all columns. Furthermore, the user can sort any given column by clicking on the column header.
 
 ```{r binary_reliability_table, results='asis', class.source = 'fold-hide'}
@@ -994,7 +994,7 @@ ggplot2::ggsave("../figs/binary_classification_bar_chart.png", width = 6.5, heig
 
 ```
 
-To further illustrate this idea, we present a bar chart of the distribution of LLM labels for the binary classification task. The chart shows the percentage of labels assigned by each LLM model across all articles and replicates. **Note that 0 corresponds to the absence of a label among the five replicates (i.e., all the labels were `NA`s).**. The chart provides insights into the consistency of the LLMs in assigning labels to the news articles. 
+To further illustrate this idea, we present a bar chart of the distribution of LLM labels for the binary classification task. The chart shows the percentage of labels assigned by each LLM model across all articles and replicates. **Note that 0 corresponds to the absence of a label among the five replicates (i.e., all the labels were `NA`).**. The chart provides insights into the consistency of the LLMs in assigning labels to the news articles. 
 
 
 ```{r binary_perc_with_na_plot, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
@@ -1503,11 +1503,7 @@ mean_ensembled_agreement = mean(ensembling_df$ensembled_agreement)
 # save the ensembling dataframe as RDS and CSV files
 readr::write_rds(ensembling_df, "../results/binary_ensembling_df.rds")
 readr::write_csv(ensembling_df, "../results/binary_ensembling_df.csv")
-
-cat(sprintf
-    ("The mean agreement with the ensembled labels (NA Ignored) is %.2f%%, which is slightly higher (no practical significance) than the 84.7%% agreement obtained by the gpt4o-mini model for the similar case where NAs where penalized for.\n", mean_ensembled_agreement*100)
-    )
 ```
 
-Hence, for this particular example, ensembling the labels from multiple replicates did not significantly improve the agreement with the *StockNewsAPI* labels. The mean agreement with the ensembled labels (NA Ignored) is `r round(mean_ensembled_agreement*100, digits = 2)`%, which is slightly higher (no practical significance) than the 84.7% agreement obtained by the `gpt4o-mini` model for the similar case where `NA`s were penalized for.
+Hence, for this particular example, ensembling the labels from multiple replicates did not significantly improve the agreement with the *StockNewsAPI* labels. The mean agreement with the ensembled labels (NA Ignored) is `r round(mean_ensembled_agreement*100, digits = 2)`%, which is slightly higher (no practical significance) than the 84.7% agreement obtained by the `gpt4o-mini` model for the similar case where `NA` were penalized for.
 
