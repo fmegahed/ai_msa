@@ -372,6 +372,8 @@ extract_classification = function(text, valid_words) {
 
 ## Custom Functions for Computing the Reliability Metrics
 
+
+
 ```{r compute_reliability_metrics}
 # Function to get summary statistics for mean percent agreement
 pa_summary = function(df, digits=4){
@@ -454,7 +456,7 @@ ensemble_reps = function(reps, na = 0){
   na_rm = dplyr::if_else(na == 0, "no", "ifany", missing = "ifany")
   
   # get the most common value
-  freq_table = table(reps)
+  freq_table = table(reps, useNA = na_rm)
   max_freq = max(freq_table)
   most_common_values = names(freq_table)[freq_table == max_freq]
   
@@ -1459,31 +1461,619 @@ ggplot2::ggsave("../figs/binary_agreement_na_dropped_by_sentiment.png", width = 
 In this section, we will repeat our analysis from the previous section, but this time we will compare the LLM labels with the "ground truth" effects to what actually happened to the stock prices. We will calculate the agreement between the LLM labels and the "ground truth" labels using our agreement metrics.
 
 
-🔴<span style="color:#c00000; font-weight:bold;">Brooke and Katie PLEASE WORK ON THIS. THANK YOU.</span> ❗🔴
+### Extracting the Ground Truth Stock Performance
+
+In the code chunk below, we use Python and the `yfinance` package to extract the stock prices for the tickers associated with the binary classification labels. We then save the raw stock prices to a CSV file for further analysis.
+
+```{python binary_ground_truth_stock_performance, cache = TRUE, message=FALSE, warning=FALSE, results='hide'}
+import pandas as pd
+import datetime as dt
+import yfinance as yf
+
+# read the classification results
+tickers_df = ( 
+  pd.read_csv("../results/binary_analysis_df.csv")
+  .assign(date = lambda x: pd.to_datetime(x["date"]))
+  .filter(["date", "tickers"])
+  )
+
+# extract the unique tickers
+tickers_list = tickers_df["tickers"].unique().tolist()
+tickers_list.append("^GSPC")
+
+# min and max dates
+min_date = ( tickers_df["date"].min() - dt.timedelta(days=5) ).strftime("%Y-%m-%d")
+max_date = ( tickers_df["date"].max() + dt.timedelta(days=5) ).strftime("%Y-%m-%d")
+
+# download the stock prices
+stock_prices = yf.download(tickers_list, start=min_date, end=max_date)
+
+# convert to long format
+stock_prices_long = (
+  stock_prices['Adj Close'].reset_index()
+  .melt(id_vars=["Date"], var_name="Ticker", value_name="Adj Close")
+  .rename(columns={"Date": "date", "Ticker": "ticker", "Adj Close": "adjusted"})
+  # convert date to a date string
+  .assign(date = lambda x: x["date"].dt.strftime("%Y-%m-%d"))
+  )
+
+# save the stock prices to a CSV file
+stock_prices_long.to_csv("../results/stock_prices_raw.csv", index=False)
+```
+
+### Computing the Leading News Effect
+
+```{r binary_leading_news_effect, results='hold', message=FALSE}
+# read the stock prices and compute the returns
+returns_df = 
+  readr::read_csv("../results/stock_prices_raw.csv") |> 
+  dplyr::group_by(ticker) |>
+  dplyr::mutate(
+    return = (adjusted - dplyr::lag(adjusted)) / dplyr::lag(adjusted),
+    perc_return = return * 100
+  ) |> 
+  dplyr::ungroup()
+
+# calculate the baseline s&p returns
+sp500_returns = returns_df |>
+  dplyr::filter(ticker == '^GSPC') |>
+  dplyr::select(date, sp500_perc_return = perc_return)
+
+# combine that with the stock returns
+returns_df = returns_df |> 
+  dplyr::left_join(sp500_returns, by = "date") |> 
+  dplyr::filter(ticker != '^GSPC') |>
+  dplyr::mutate(
+    excess_return = perc_return - sp500_perc_return,
+    excess_return_sign = dplyr::case_when(
+      excess_return > 0 ~ "Positive",
+      excess_return < 0 ~ "Negative",
+      TRUE ~ NA
+    ),
+    leading_news_effect = dplyr::lead(excess_return_sign)
+  )
+
+# save the returns dataframe as RDS and CSV files
+readr::write_rds(returns_df, "../results/stock_returns_df.rds")
+readr::write_csv(returns_df, "../results/stock_returns_df.csv")
+
+# show the results for the first 5 tickers of interest (excluding S&P 500)
+DT::datatable(
+  returns_df |> 
+    dplyr::filter( ticker %in% unique(returns_df$ticker)[1:5] ), 
+  rownames = FALSE, 
+  extensions = c("FixedColumns"),
+  options = list(
+    pageLength = 10, 
+    scrollX = TRUE,
+    fixedColumns = list(leftColumns = 1)
+  )
+) |> 
+  DT::formatRound(columns = 3:7, digits = 2) |> 
+  DT::formatStyle(
+    columns = 'leading_news_effect',  # Apply to the 9th column (news_effect)
+    valueColumns = 'leading_news_effect',
+    color = DT::JS("value == 'Positive' ? '#2C7BB6' : '#D7191C '"), 
+    fontWeight = 'bold'       # Bold the text
+  )
+```
 
 
 
-## Ensembling the Binary Classification Labels and Comparing with "StockNewsAPI" Labels
+
+### Merging the `News Effect` with Our Binary Classification Labels
+
+In the code chunk below, we merge the binary classification labels with the leading news effect. We also calculate the distribution of the leading news effect and identify the tickers with missing values.
+
+```{r binary_merging_news_effects, results='asis'}
+# read the stock returns dataframe
+adjusted_news_df = 
+  readr::read_csv("../results/binary_analysis_df.csv") |> 
+  dplyr::mutate(date = lubridate::as_date(date)) |> 
+  dplyr::select(-percent_agreement)
+
+# NYSE holidays within the date range
+min_date = min(adjusted_news_df$date) |> as.Date()
+max_date = max(adjusted_news_df$date) |> as.Date()
+
+# nyse holidays within our range dates
+# nyse_holidays = 
+#   timeDate::holidayNYSE(year = lubridate::year(min_date):lubridate::year(max_date)) |> 
+#   as.data.frame() |> 
+#   dplyr::rename(off_dates = 1) |>
+#   dplyr::mutate(off_dates = as.Date(off_dates)) |> 
+#   dplyr::filter(off_dates >= min_date & off_dates <= max_date) |>  
+#   dplyr::pull(off_dates) 
+
+# weekends within the date range
+weekends =
+  data.frame(off_dates = seq.Date(min_date, max_date, by = "day")) |>
+  dplyr::mutate(
+    weekday = lubridate::wday(off_dates, label = TRUE, abbr = FALSE)
+    ) |> 
+  dplyr::filter(weekday %in% c('Saturday', 'Sunday') ) |> 
+  dplyr::pull(off_dates)
+
+# combine the holidays and weekends
+# off_dates = c(nyse_holidays, weekends) |> as.Date()
+off_dates = weekends
+
+# trading days
+trading_days = seq.Date(min_date, max_date, by = "day")
+trading_days_index = !trading_days %in% off_dates 
+trading_days = trading_days[trading_days_index]
+
+# helper function to find the next trading day after the current date
+next_trading_day = function(current_date, trading_days) {
+  next_day = trading_days[trading_days > current_date]
+  if (length(next_day) > 0) {
+    return(min(next_day))  # return the next available trading day
+  } else {
+    return(NA)  # if no future trading day is available (unlikely in this case)
+  }
+}
+
+# create a binary gold dataframe with the leading news effect
+binary_gold_df = 
+  adjusted_news_df |> 
+  dplyr::mutate(
+    day_of_week = lubridate::wday(date, label = TRUE, abbr = FALSE),
+    impact_date = date,  # set impact_date as original date first
+    # if it's a holiday or weekend, pick the next available trading day
+    impact_date = dplyr::if_else(
+      date %in% off_dates, 
+      purrr::map_dbl(date, ~ next_trading_day(.x, trading_days)) |> as.Date(),  
+      impact_date  # Keep original date if not a weekend/holiday
+    )
+  ) |> 
+  # left join with returns_df using the adjusted impact_date
+  dplyr::left_join(
+    returns_df |> dplyr::select(date, ticker, leading_news_effect),
+    by = c("impact_date" = "date", "tickers" = "ticker")
+  )
+
+
+# distribution of the leading news effect
+news_effect_table = 
+  table(binary_gold_df$leading_news_effect, useNA = "ifany") / 7
+
+# extract the NA tickers (assuming tickers are in the same dataframe)
+na_tickers = binary_gold_df |> 
+  dplyr::filter(is.na(leading_news_effect)) |> 
+  dplyr::pull(tickers) |> 
+  unique()
+
+# explanation with cat
+cat(
+  "The table below shows the average distribution of the leading news effect, normalized by the number of LLM models (7):",
+  "\n\nNegative news effect count per model:", news_effect_table["Negative"],
+  "\nPositive news effect count per model:", news_effect_table["Positive"],
+  "\nMissing or NA values per model:", news_effect_table[3],
+  "\n\nThe missing or NA values are likely due to the fact that we could not retrieve stock prices for certain tickers from the Yahoo Finance API, possibly because they represent private stocks. The tickers associated with these missing values are:\n",
+  paste(na_tickers, collapse = ", ")
+)
+
+```
+
+
+### Computing the Agreement with the Ground Truth Stock Performance
+
+In the code chunk below, we calculate the agreement between the binary classification labels and the leading news effect. We calculate the agreement using two different methods:  
+  - one that penalizes `NA`, and  
+  - one that ignores `NA`.
+
+```{r binary_agreement_with_ground_truth, results='asis', message=FALSE}
+# calculate the agreement with the ground truth
+binary_gold_validity_df = 
+  binary_gold_df |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    agreement_na_penalty = calculate_agreement(
+      reps = dplyr::c_across(dplyr::starts_with("rep_")),
+      ground_truth = leading_news_effect
+    ),
+    agreement_na_as_na = calculate_agreement(
+      reps = dplyr::c_across(dplyr::starts_with("rep_")),
+      ground_truth = leading_news_effect,
+      na = NA
+    )
+  )
+
+# save the validity dataframe as RDS and CSV files
+readr::write_rds(binary_gold_validity_df, "../results/binary_gold_validity_df.rds")
+readr::write_csv(binary_gold_validity_df, "../results/binary_gold_validity_df.csv")
+
+```
+
+### Tabulating the Validity Metrics {.tabset .tabset-fade .tabset-pills}
+
+The validity metrics for the binary classification experiment are presented in the table below. The table includes the percent agreement with the **Original StockNewsAPI** labels, calculated using two different methods:   
+  - one that penalizes `NAs`, and  
+  - one that drops any run (`chat_model` $\times$ `article`) that contains at least one invalid response. 
+  
+#### Overall {-}
+
+```{r binary_gold_validity_table, results='asis'}
+binary_gold_validity_df |> 
+  dplyr::group_by(chat_model) |>
+  dplyr::summarize(
+    `Mean Agreement (NA Penalty)` = mean(agreement_na_penalty) |> round(digits = 3),
+    `Mean Agreement (NA Dropped)` = mean(agreement_na_as_na, na.rm = TRUE) |> round(digits = 3)
+  ) |> 
+  dplyr::mutate(
+    `API Costs / 1M Input Tokens` = c(3,  0.25, 2.5, 2.5, 0.15, 2, 0.2),
+    `API Costs / 1M Output Tokens`= c(15, 1.25,  10,  10,  0.6, 6, 0.6),
+    input_colors = dplyr::case_when(
+      `API Costs / 1M Input Tokens` <= 0.25 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 2 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    ),
+    output_colors = dplyr::case_when(
+      `API Costs / 1M Output Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 5 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 10 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    )
+  ) -> gold_validity_table
+
+# calculate the maximum agreement values for styling
+max_agreement_na_penalty = max(gold_validity_table$`Mean Agreement (NA Penalty)`) 
+max_agreement_na_dropped = max(gold_validity_table$`Mean Agreement (NA Dropped)`) 
+
+# render the table
+gold_validity_table |> 
+  dplyr::select(chat_model, `API Costs / 1M Input Tokens`, `API Costs / 1M Output Tokens`, dplyr::everything()) |>
+  dplyr::arrange(dplyr::desc(`Mean Agreement (NA Penalty)`)) |>
+  DT::datatable(
+    rownames = FALSE, 
+    extensions = c("FixedColumns"),
+    options = list(
+      pageLength = 7, 
+      scrollX = TRUE,
+      fixedColumns = list(leftColumns = 3),
+      columnDefs = list(
+        list(visible = FALSE, targets = c(5,6))
+      )
+    )
+  ) |> 
+  DT::formatCurrency(columns = c(2,3), digits = 2) |> 
+  DT::formatStyle(
+    columns = 2,  # Apply to the 2nd column (API Costs / 1M Input Tokens)
+    valueColumns = 'input_colors',
+    color = DT::JS("value"),  # Use color from 'input_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  DT::formatStyle(
+    columns = 3,  # Apply to the 3rd column (API Costs / 1M Output Tokens)
+    valueColumns = 'output_colors',
+    color = DT::JS("value"),  # Use color from 'output_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |> 
+  DT::formatRound(columns = c(4:5), digits = 3) |> 
+  DT::formatStyle(
+    'Mean Agreement (NA Penalty)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_penalty), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_penalty), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Mean Agreement (NA Dropped)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_dropped), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_dropped), 'underline')
+  )
+```
+
+#### By Model and News Effect {-}
+
+```{r binary_validity_table_by_news, results='asis'}
+binary_gold_validity_df |> 
+  dplyr::group_by(chat_model, leading_news_effect) |>
+  dplyr::summarize(
+    `Mean Agreement (NA Penalty)` = mean(agreement_na_penalty) |> round(digits = 3),
+    `Mean Agreement (NA Dropped)` = mean(agreement_na_as_na, na.rm = TRUE) |> round(digits = 3)
+  ) |> 
+  dplyr::ungroup() |> 
+  dplyr::mutate(
+    `API Costs / 1M Input Tokens` = c(3,3,3,  0.25,0.25,0.25, 2.5,2.5,2.5, 2.5,2.5,2.5, 0.15,0.15,0.15, 2,2,2, 0.2,0.2,0.2),
+    `API Costs / 1M Output Tokens`= c(15,15,15,  1.25,1.25,1.25,  10,10,10,  10,10,10,  0.6,0.6,0.6,  6,6,6,  0.6,0.6,0.6),
+    input_colors = dplyr::case_when(
+      `API Costs / 1M Input Tokens` <= 0.25 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Input Tokens` <= 2 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    ),
+    output_colors = dplyr::case_when(
+      `API Costs / 1M Output Tokens` <= 1 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 5 ~ "#fcae91",
+      `API Costs / 1M Output Tokens` <= 10 ~ "#de2d26",
+      TRUE ~ "#a50f15"
+    )
+  ) -> validity_table_by_news
+
+# calculate the maximum agreement values for styling
+max_agreement_na_penalty = max(validity_table_by_news$`Mean Agreement (NA Penalty)`)
+max_agreement_na_dropped = max(validity_table_by_news$`Mean Agreement (NA Dropped)`)
+
+# render the table
+validity_table_by_news |> 
+  dplyr::select(chat_model, leading_news_effect, `API Costs / 1M Input Tokens`, `API Costs / 1M Output Tokens`, dplyr::everything()) |>
+  dplyr::arrange(leading_news_effect, dplyr::desc(`Mean Agreement (NA Penalty)`)) |>
+  dplyr::filter(
+    leading_news_effect %in% c("Negative", "Positive") 
+  ) |>
+  DT::datatable(
+    rownames = FALSE, 
+    extensions = c("FixedColumns"),
+    options = list(
+      pageLength = 14, 
+      scrollX = TRUE,
+      fixedColumns = list(leftColumns = 4),
+      columnDefs = list(
+        list(visible = FALSE, targets = c(6,7))
+      )
+    )
+  ) |> 
+  DT::formatCurrency(columns = c(3,4), digits = 2) |> 
+  DT::formatStyle(
+    columns = 3,  # Apply to the 3rd column (API Costs / 1M Input Tokens)
+    valueColumns = 'input_colors',
+    color = DT::JS("value"),  # Use color from 'input_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |>
+  DT::formatStyle(
+    columns = 4,  # Apply to the 4th column (API Costs / 1M Output Tokens)
+    valueColumns = 'output_colors',
+    color = DT::JS("value"),  # Use color from 'output_colors'
+    fontWeight = 'bold'       # Bold the text
+  ) |> 
+  DT::formatRound(columns = c(5:6), digits = 3) |> 
+  DT::formatStyle(
+    'Mean Agreement (NA Penalty)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_penalty), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_penalty), 'underline')
+  ) |>
+  DT::formatStyle(
+    'Mean Agreement (NA Dropped)',
+    fontWeight = DT::styleEqual(c(max_agreement_na_dropped), 'bold'),
+    textDecoration = DT::styleEqual(c(max_agreement_na_dropped), 'underline')
+  )
+
+```
+
+### Visualizing the Validity Metrics {.tabset .tabset-fade .tabset-pills}
+
+The validity metrics for the binary classification experiment are visualized in the four plots below. The first two plots show the agreement with the `ground_truth` by LLM model, with the first plot penalizing `NAs` and the second plot ignoring `NAs`. The third and fourth plots show the agreement with the `ground_truth` by LLM model and sentiment, with the first plot penalizing `NAs` and the second plot ignoring `NAs`.
+
+#### Overall NA Penalized Agreement {-}
+
+```{r gold_binary_validity_plot, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+chat_model_colors = RColorBrewer::brewer.pal(7, "Paired")
+
+binary_gold_validity_df |>
+  dplyr::group_by(chat_model, agreement_na_penalty) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf)) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_penalty, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_wrap(~chat_model, ncol = 2) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Penalized Agreement with the Actual Stock Performance by LLM Model" |> 
+      stringr::str_wrap(width = 50),
+    x = "Percent Agreement (NA Penalty)",
+    y = "Percent of Articles with Agreement (NA Penalty) Denoted by X-Axis",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/gold_binary_agreement_na_penalized_overall.png", width = 6.5, height = 9, dpi = 600)
+
+```
+
+
+#### Overall NA Dropped Agreement {-}
+
+```{r gold_binary_validity_plot_na_dropped, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+binary_gold_validity_df |>
+  tidyr::drop_na(agreement_na_as_na) |>
+  dplyr::group_by(chat_model, agreement_na_as_na) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf)) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_as_na, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = "black") +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_wrap(~chat_model, ncol = 2) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Ignored Agreement with the Actual Stock Performance by LLM Model" |> 
+      stringr::str_wrap(width = 50),
+    x = "Percent Agreement (NA Dropped)",
+    y = "Percent of Articles with Agreement (NA Dropped) Denoted by X-Axis",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/gold_binary_agreement_na_dropped_overall.png", width = 6.5, height = 9, dpi = 600)
+
+```
+
+#### By Stock Performance: NA Penalized  {-}
+
+```{r binary_validity_plot_by_perf, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+binary_gold_validity_df |>
+  dplyr::filter(!is.na(leading_news_effect)) |>
+  dplyr::group_by(chat_model, leading_news_effect, agreement_na_penalty) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(
+    chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf) |> 
+      forcats::fct_recode(
+    "sonnet3.5" = "claude-3-5-sonnet-20240620",
+    "command-r+" = "command-r-plus",
+    "mistral-s" = "mistral-small-2409",
+    "gpt4o" = "gpt-4o-2024-08-06",
+    "haiku3" = "claude-3-haiku-20240307",
+    "mistral-l" = "mistral-large-2407",
+    "gpt4om" = "gpt-4o-mini"
+  ),
+    ) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_penalty, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_grid(rows = dplyr::vars(chat_model), cols = dplyr::vars(leading_news_effect)) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 110), breaks = seq(0,100,25)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Penalized Agreement with the Actual Stock Performance",
+    x = "Percent Agreement (NA Penalty)",
+    y = "Percent of Articles with Agreement (NA Penalty) Denoted by X-Axis",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/gold_binary_agreement_na_penalized_by_sentiment.png", width = 6.5, height = 10, dpi = 600)
+
+```
+
+
+#### By By Stock Performance: NA Dropped {-}
+
+```{r binary_validity_plot_by_perf_na_dropped, results='hold', fig.width=6.5, fig.height=8, fig.align='center', out.width="100%", class.source = 'fold-hide', warning=FALSE, message=FALSE}
+
+binary_gold_validity_df |>
+  dplyr::filter(!is.na(leading_news_effect)) |>
+  tidyr::drop_na(agreement_na_as_na) |>
+  dplyr::group_by(chat_model, leading_news_effect, agreement_na_as_na) |>
+  dplyr::summarize(count = dplyr::n()) |>
+  dplyr::mutate(percent = count / sum(count) * 100) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(
+    chat_model = forcats::fct_relevel(chat_model, "command-r-plus", after = Inf) |> 
+      forcats::fct_recode(
+    "sonnet3.5" = "claude-3-5-sonnet-20240620",
+    "command-r+" = "command-r-plus",
+    "mistral-s" = "mistral-small-2409",
+    "gpt4o" = "gpt-4o-2024-08-06",
+    "haiku3" = "claude-3-haiku-20240307",
+    "mistral-l" = "mistral-large-2407",
+    "gpt4om" = "gpt-4o-mini"
+  ),
+    ) |>
+  ggplot2::ggplot(ggplot2::aes(x = agreement_na_as_na, y = percent, fill = chat_model)) +
+  ggplot2::geom_bar(stat = 'identity', color = 'black') +
+  ggplot2::scale_fill_manual(values = chat_model_colors) +
+  ggplot2::facet_grid(rows = dplyr::vars(chat_model), cols = dplyr::vars(leading_news_effect)) +
+  ggplot2::labs(y = "Percentage") +
+  ggplot2::scale_x_continuous(breaks = seq(0,1,0.2)) +
+  ggplot2::scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 110), breaks = seq(0, 100, 25)) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percent)), 
+                     vjust = -0.5, size = 3, fontface = "bold") +
+  ggplot2::labs(
+    title = "NA Ignored Agreement with the Actual Stock Performance",
+    x = "Percent Agreement (NA Ignored)",
+    y = "Percent of Articles with Agreement (NA Ignored) Denoted by X-Axis",
+    fill = "LLM Model",
+    caption = "Notes: The experiment was run on a sample of ~1400 news articles labeled as positive or negative by the StockNewsAPI. The text and titles of thoses articles were then passed to the LLMs for binary classification on Sept 26-29, 2024. Adding the percentages within a panel may slightly differ from 100% due to rounding errors." |> stringr::str_wrap(width = 120)
+  ) +
+  ggplot2::theme_bw(base_family = "Arial") +
+  ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 12, face = "bold"),
+    axis.text.x = ggplot2::element_text(size = 9, face = "bold"), 
+    legend.position = "none",
+    legend.title = ggplot2::element_text(size = 12, face = "bold"),
+    legend.text = ggplot2::element_text(size = 10),
+    plot.title = ggplot2::element_text(size = 16, face = "bold"),
+    plot.caption = ggplot2::element_text(size = 8),
+    panel.grid = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(fill = NA),
+    strip.text = ggplot2::element_text(face = "bold", size = 10)
+  ) 
+
+ggplot2::ggsave("../figs/gold_binary_agreement_na_dropped_by_sentiment.png", width = 6.5, height = 10, dpi = 600)
+
+```
+
+
+## Ensembling the Binary Classification Labels and Comparing with the Ground Truth Labels
 
 Many practitioners may run their experiment only once and may not have the luxury of running multiple replicates to assess the reliability of the LLM labels. In such cases, ensembling the labels from multiple replicates may provide a more reliable estimate of the LLM's performance. In this section, we will ensemble the binary classification labels from the replicates and assess the validity of the ensembled labels.
 
 ```{r binary_classification_ensembling, results='asis', message=FALSE}
+set.seed(2024) # since we break ties by selecting randomly 
+
 # read the binary classification ensembling results
 ensembling_df = 
-  validity_df = 
-  readr::read_csv("../results/binary_analysis_df.csv") |> 
-  dplyr::select(date:rep_1) |> # as if they only ran the first replicate 
-  dplyr::left_join(stock_sentiment_df, by = c("date", "title", "text", "tickers")) |> 
+  binary_gold_validity_df |> 
+  dplyr::filter(!is.na(leading_news_effect)) |> # remove the rows with NA ground truth)
+  dplyr::select(date:rep_1, leading_news_effect) |> # as if they only ran the first replicate 
   tidyr::pivot_wider(names_from = "chat_model", values_from = "rep_1") |> 
   dplyr::rowwise() |>
   dplyr::mutate(
     agreement_na_penalty = calculate_agreement(
       reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
-      ground_truth = dplyr::c_across(dplyr::contains("sentiment"))
+      ground_truth = dplyr::c_across(dplyr::contains("leading_news_effect"))
     ),
     agreement_na_as_na = calculate_agreement(
       reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
-      ground_truth = dplyr::c_across(dplyr::contains("sentiment")),
+      ground_truth = dplyr::c_across(dplyr::contains("leading_news_effect")),
       na = NA
     ),
     ensembled_labels_na_ignored = ensemble_reps(
@@ -1494,7 +2084,7 @@ ensembling_df =
       reps = dplyr::c_across(`claude-3-5-sonnet-20240620`: `gpt-4o-mini`),
       na = NA
     ),
-    ensembled_agreement = sentiment == ensembled_labels_na_ignored
+    ensembled_agreement = leading_news_effect == ensembled_labels_na_ignored
   ) 
 
 # computing the overall agreement with the ensembled labels
@@ -1505,5 +2095,5 @@ readr::write_rds(ensembling_df, "../results/binary_ensembling_df.rds")
 readr::write_csv(ensembling_df, "../results/binary_ensembling_df.csv")
 ```
 
-Hence, for this particular example, ensembling the labels from multiple replicates did not significantly improve the agreement with the *StockNewsAPI* labels. The mean agreement with the ensembled labels (NA Ignored) is `r round(mean_ensembled_agreement*100, digits = 2)`%, which is slightly higher (no practical significance) than the 84.7% agreement obtained by the `gpt4o-mini` model for the similar case where `NA` were penalized for.
+The *mean ensemble agreement* with the ground truth labels is **`r round(mean_ensembled_agreement, digits = 3)`**.
 
