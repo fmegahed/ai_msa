@@ -2097,3 +2097,74 @@ readr::write_csv(ensembling_df, "../results/binary_ensembling_df.csv")
 
 The *mean ensemble agreement* with the ground truth labels is **`r round(mean_ensembled_agreement, digits = 3)`**.
 
+## Prompt Sensitivity Analysis
+
+In this section, we will conduct a prompt sensitivity analysis to assess the impact of the prompt on the binary classification labels. We will evaluate the agreement with the `gold standard` and `ground truth` labels for a simpler prompt and compare the results.
+
+### Prompt Construction
+
+For our labeling task, we defined a system prompt that combines *Chain of Thought* learning with *few-shot* learning. The system prompt provides instructions to the LLMs on how to categorize the impact of a news article on a stock's next-day return as either "Positive" or "Negative". The system prompt also includes simulated examples (involving Bitcoin which is not in our stock news dataset) to guide the LLMs in their classification task. Then, we defined a user prompt that presents the news article's title, full text, and the stock ticker symbol to the LLMs (these will be obtained from the CSV file). Both prompts are combined into a chat prompt template that will be used to interact with the LLMs.
+
+
+```{python llm_binary_sensitivity, results='asis'}
+# define the system prompt for the categorization task
+bin_system_prompt = """
+Task: You will be provided with a news article's title, full text, and a stock ticker symbol. Categorize the impact of the news article on a stock's next-day return as either "Positive" or "Negative". 
+
+Classification Guidelines:
+- "Positive": News likely to increase the stock price.
+- "Negative": News likely to decrease the stock price.
+- Focus on the immediate impact (next day return).
+- Weigh the importance of positive vs. negative factors if the article is mixed.
+
+Output Format:
+- <classification>: [Final classification: "Positive" or "Negative"]
+
+Note: Your classification must strictly be "Positive" or "Negative" based on the immediate expected impact. Do not include any additional analysis or explanation in your response, i.e., your response must be limited to the following two options:  
+  - <classification>: Positive   
+  - <classification>: Negative  
+"""
+
+# define the user input string template
+bin_user_prompt = """
+Here is the news article:
+
+<title>
+{title}
+</title>
+
+<text>
+{text}
+</text>
+
+The stock ticker symbol you need to consider is: {tickers}
+"""
+
+# create the chat prompt template
+bin_chat_prompt = ChatPromptTemplate.from_messages([
+    ("system", bin_system_prompt),
+    ("human", bin_user_prompt),
+])
+```
+
+
+
+
+### Labeling the Binary Classification Dataset
+
+In this section, we will use the LLMs to label the sentiment of the news articles in our binary classification dataset. We will use our `generalized_chat_completion` function to interact with the LLMs and generate chat completions for each news article. The chat completions will include the LLM's analysis and classification of the news article's impact on the stock's next-day return. We will run the labeling process for each LLM model and replicate the process three times to ensure consistency in the labeling results.
+
+```{python binary_labeling_sens, cache=TRUE}
+res = generalized_chat_completion(
+  csv_path = '../data/binary_classification_data.csv',
+  columns_to_keep = ['date', 'title', 'text', 'tickers'],
+  models = models,
+  chat_prompt_template = bin_chat_prompt,
+  columns_for_chat_prompt = ['title', 'text', 'tickers'],
+  num_replicates = 5,
+  output_file = '../results/binary_classification_sensitivity_results.csv',
+  )
+```
+
+The labeling process has been completed for the binary classification dataset. The results have been saved to a CSV file, which can be accessed [here](https://github.com/fmegahed/ai_msa/blob/main/results/binary_classification_sensitivity_results.csv).
+
