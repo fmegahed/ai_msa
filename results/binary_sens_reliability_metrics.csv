@@ -1,0 +1,43 @@
+model,coeff.name,pa,pe,coeff.val,coeff.se,conf.int,p.value,w.name
+claude-3-5-sonnet-20240620,Conger's Kappa,0.9995667870036101,0.5218910190410406,0.99909,0.00154,"(0.996,1)",0,unweighted
+claude-3-5-sonnet-20240620,Fleiss' Kappa,0.9995667870036101,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+claude-3-5-sonnet-20240620,Percent Agreement,0.9995667870036101,0,0.9995667870036101,0.00132,"(0.997,1)",0,unweighted
+claude-3-5-sonnet-20240620,AC1,0.9995667870036101,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+claude-3-5-sonnet-20240620,Brennan-Prediger,0.9995667870036101,0.5,0.99913,0.00152,"(0.996,1)",0,unweighted
+claude-3-5-sonnet-20240620,Krippendorff's Alpha,0.9995668495614436,0.5218910815988849,0.99909,9.1e-4,"(0.997,1)",0,unweighted
+command-r-plus,Conger's Kappa,0.99379956741168,0.5005838019013715,0.98758,0.00313,"(0.981,0.994)",0,unweighted
+command-r-plus,Fleiss' Kappa,0.99379956741168,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+command-r-plus,Percent Agreement,0.99379956741168,0,0.99379956741168,0.00168,"(0.99,0.997)",0,unweighted
+command-r-plus,AC1,0.99379956741168,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+command-r-plus,Brennan-Prediger,0.99379956741168,0.5,0.9876,0.00313,"(0.981,0.994)",0,unweighted
+command-r-plus,Krippendorff's Alpha,0.9938004614899191,0.5005839474489913,0.98759,0.00305,"(0.982,0.994)",0,unweighted
+mistral-small-2409,Conger's Kappa,0.9919191919191919,0.5034289503986473,0.98373,0.0037200000000000002,"(0.976,0.991)",0,unweighted
+mistral-small-2409,Fleiss' Kappa,0.9919191919191919,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+mistral-small-2409,Percent Agreement,0.9919191919191919,0,0.9919191919191919,0.00205,"(0.988,0.996)",0,unweighted
+mistral-small-2409,AC1,0.9919191919191919,NA,NA,NA,"(NaN,NaN)",NA,unweighted
+mistral-small-2409,Brennan-Prediger,0.9919191919191919,0.5,0.98384,0.0037,"(0.977,0.991)",0,unweighted
+mistral-small-2409,Krippendorff's Alpha,0.991920357980964,0.5034302622181503,0.98373,0.00358,"(0.977,0.991)",0,unweighted
+gpt-4o-2024-08-06,Conger's Kappa,0.9940922190201729,0.500529549286183,0.98817,0.003,"(0.982,0.994)",0,unweighted
+gpt-4o-2024-08-06,Fleiss' Kappa,0.9940922190201729,0.5005302344509246,0.98817,0.003,"(0.982,0.994)",0,unweighted
+gpt-4o-2024-08-06,Percent Agreement,0.9940922190201729,0,0.9940922190201729,0.0015,"(0.991,0.997)",0,unweighted
+gpt-4o-2024-08-06,AC1,0.9940922190201729,0.4994697655490869,0.9882,0.00299,"(0.982,0.994)",0,unweighted
+gpt-4o-2024-08-06,Brennan-Prediger,0.9940922190201729,0.5,0.98818,0.00299,"(0.982,0.994)",0,unweighted
+gpt-4o-2024-08-06,Krippendorff's Alpha,0.9940930702854437,0.5005302344509246,0.98817,0.003,"(0.982,0.994)",0,unweighted
+claude-3-haiku-20240307,Conger's Kappa,1,0.5189198897092409,1,0,"(1,1)",0,unweighted
+claude-3-haiku-20240307,Fleiss' Kappa,1,0.5189198897092454,1,0,"(1,1)",0,unweighted
+claude-3-haiku-20240307,Percent Agreement,1,0,1,0,"(1,1)",0,unweighted
+claude-3-haiku-20240307,AC1,1,0.4810801102907598,1,0,"(1,1)",0,unweighted
+claude-3-haiku-20240307,Brennan-Prediger,1,0.5,1,0,"(1,1)",0,unweighted
+claude-3-haiku-20240307,Krippendorff's Alpha,1,0.5189198897092454,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Conger's Kappa,1,0.5095673911418581,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Fleiss' Kappa,1,0.5095673911418651,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Percent Agreement,1,0,1,0,"(1,1)",0,unweighted
+mistral-large-2407,AC1,1,0.4904326088581422,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Brennan-Prediger,1,0.5,1,0,"(1,1)",0,unweighted
+mistral-large-2407,Krippendorff's Alpha,1,0.5095673911418651,1,0,"(1,1)",0,unweighted
+gpt-4o-mini,Conger's Kappa,0.9971181556195965,0.5036623092958168,0.99419,0.00209,"(0.99,0.998)",0,unweighted
+gpt-4o-mini,Fleiss' Kappa,0.9971181556195965,0.5036628906477183,0.99419,0.00209,"(0.99,0.998)",0,unweighted
+gpt-4o-mini,Percent Agreement,0.9971181556195965,0,0.9971181556195965,0.00104,"(0.995,0.999)",0,unweighted
+gpt-4o-mini,AC1,0.9971181556195965,0.49633710935229114,0.99428,0.00206,"(0.99,0.998)",0,unweighted
+gpt-4o-mini,Brennan-Prediger,0.9971181556195965,0.5,0.99424,0.00207,"(0.99,0.998)",0,unweighted
+gpt-4o-mini,Krippendorff's Alpha,0.9971185708709481,0.5036628906477183,0.99419,0.00209,"(0.99,0.998)",0,unweighted

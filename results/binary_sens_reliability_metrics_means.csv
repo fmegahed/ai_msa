@@ -1,0 +1,8 @@
+model,Percent Agreement (with NA Penalty),Percent Agreement (Ignoring NA),Conger's Kappa,Fleiss' Kappa,AC1,Brennan-Prediger,Krippendorff's Alpha,high_pa_sd,API Costs / 1M Input Tokens,API Costs / 1M Output Tokens
+claude-3-5-sonnet-20240620,0.998,1,0.999,NA,NA,0.999,0.999,FALSE,3,15
+command-r-plus,0.996,0.994,0.988,NA,NA,0.988,0.988,FALSE,2.5,10
+mistral-small-2409,0.994,0.992,0.984,NA,NA,0.984,0.984,FALSE,0.2,0.6
+gpt-4o-2024-08-06,0.996,0.994,0.988,0.988,0.988,0.988,0.988,FALSE,2.5,10
+claude-3-haiku-20240307,1,1,1,1,1,1,1,FALSE,0.25,1.25
+mistral-large-2407,1,1,1,1,1,1,1,FALSE,2,6
+gpt-4o-mini,0.998,0.997,0.994,0.994,0.994,0.994,0.994,FALSE,0.15,0.6

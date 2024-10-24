@@ -1,0 +1,8 @@
+model,mean_percent_agreement,sd_percent_agreement
+claude-3-5-sonnet-20240620,0.998,0.048
+command-r-plus,0.996,0.044
+mistral-small-2409,0.994,0.057
+gpt-4o-2024-08-06,0.996,0.035
+claude-3-haiku-20240307,1,0
+mistral-large-2407,1,0
+gpt-4o-mini,0.998,0.024
